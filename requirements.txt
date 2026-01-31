@@ -1,1 +1,3 @@
 fpdf
+google-generativeai
+streamlit
