@@ -128,7 +128,8 @@ if st.button("Generate Interview Framework"):
         pdf.cell(0, 8, f"{k}: {v}%", ln=True)
 
     # Special characters-ah handle panna intha maari mathunga
-pdf_output = pdf.output(dest='S')
+content = pdf.output(dest='S')
+pdf_output = content.encode('latin-1', 'ignore')
 if isinstance(pdf_output, str):
     pdf_bytes = pdf_output.encode('latin-1', 'replace')
 else:
