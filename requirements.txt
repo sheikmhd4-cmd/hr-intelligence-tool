@@ -1,3 +1,4 @@
-fpdf
-google-generativeai
 streamlit
+pandas
+altair
+fpdf2

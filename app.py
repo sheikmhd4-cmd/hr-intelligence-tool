@@ -3,34 +3,26 @@ import pandas as pd
 import altair as alt
 from fpdf import FPDF
 
-# ---------------- PAGE CONFIG ----------------
-
+# ---------- PAGE CONFIG ----------
 st.set_page_config(
     page_title="HR Prompt Engineering Tool",
     layout="wide",
     page_icon="💼"
 )
 
-# ---------------- TITLE ----------------
-
+# ---------- TITLE ----------
 st.title("HR Prompt Engineering Tool")
-st.markdown(
-    "Convert Job Descriptions into Interview Frameworks with Assessment & Scoring"
-)
+st.markdown("Convert Job Descriptions into Interview Frameworks with Assessment & Scoring")
 
-# ---------------- JOB DESCRIPTION ----------------
-
-uploaded_file = st.file_uploader(
-    "Upload Job Description (.txt only)", type=["txt"]
-)
+# ---------- JOB DESCRIPTION ----------
+uploaded_file = st.file_uploader("Upload Job Description (.txt only)", type=["txt"])
 
 if uploaded_file is not None:
     jd = uploaded_file.read().decode("utf-8")
 else:
     jd = st.text_area("Or Paste Job Description Here", height=200)
 
-# ---------------- SAMPLE QUESTIONS & TASKS ----------------
-
+# ---------- SAMPLE QUESTIONS ----------
 tech_qs = [
     "Explain CI/CD pipelines and their importance.",
     "How would you deploy a Python application using Docker?",
@@ -53,12 +45,8 @@ tasks = [
     "Write a system design document for scalable deployment."
 ]
 
-# ---------------- INTERACTIVE RUBRIC ----------------
-
-st.markdown(
-    "<h3 style='color:#D35400;'>Scoring Rubric (Editable)</h3>",
-    unsafe_allow_html=True,
-)
+# ---------- RUBRIC ----------
+st.subheader("Scoring Rubric (Editable)")
 
 technical_weight = st.slider("Technical Skill (%)", 0, 100, 40)
 problem_solving_weight = st.slider("Problem Solving (%)", 0, 100, 25)
@@ -69,125 +57,87 @@ rubric = {
     "Technical Skill": technical_weight,
     "Problem Solving": problem_solving_weight,
     "System Design": system_design_weight,
-    "Communication": communication_weight,
+    "Communication": communication_weight
 }
 
-# ---------------- GENERATE FRAMEWORK ----------------
-
+# ---------- GENERATE ----------
 if st.button("Generate Interview Framework"):
 
     col1, col2 = st.columns([2, 1])
 
-    # ---------- LEFT SIDE ----------
     with col1:
-
-        st.markdown(
-            "<h3 style='color:#0B5345;'>Technical Questions</h3>",
-            unsafe_allow_html=True,
-        )
+        st.subheader("Technical Questions")
         for q in tech_qs:
             st.write("•", q)
 
-        st.markdown(
-            "<h3 style='color:#154360;'>Behavioral Questions</h3>",
-            unsafe_allow_html=True,
-        )
+        st.subheader("Behavioral Questions")
         for q in behav_qs:
             st.write("•", q)
 
-        st.markdown(
-            "<h3 style='color:#7D3C98;'>Assessment Tasks</h3>",
-            unsafe_allow_html=True,
-        )
+        st.subheader("Assessment Tasks")
         for t in tasks:
             st.write("•", t)
 
-    # ---------- RIGHT SIDE ----------
     with col2:
+        df = pd.DataFrame(rubric.items(), columns=["Criteria", "Weight"])
+        st.table(df)
 
-        st.markdown(
-            "<h3 style='color:#D35400;'>Scoring Rubric Visualization</h3>",
-            unsafe_allow_html=True,
+        chart = alt.Chart(df).mark_arc(innerRadius=50).encode(
+            theta="Weight",
+            color="Criteria",
+            tooltip=["Criteria", "Weight"]
         )
-
-        df_rubric = pd.DataFrame(
-            list(rubric.items()),
-            columns=["Criteria", "Weight"]
-        )
-
-        st.table(df_rubric)
-
-        chart = alt.Chart(df_rubric).mark_arc(innerRadius=50).encode(
-            theta=alt.Theta(field="Weight", type="quantitative"),
-            color=alt.Color(field="Criteria", type="nominal"),
-            tooltip=["Criteria", "Weight"],
-        )
-
         st.altair_chart(chart, use_container_width=True)
 
-    # ---------------- PDF REPORT ----------------
-
+    # ---------- PDF ----------
     pdf = FPDF()
     pdf.add_page()
 
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(
-        0,
-        10,
-        "HR Prompt Engineering Tool Report",
-        ln=True,
-        align="C",
-    )
+    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+    pdf.add_font("DejaVu", "B", "DejaVuSans.ttf", uni=True)
 
+    pdf.set_font("DejaVu", "B", 16)
+    pdf.cell(0, 10, "HR Prompt Engineering Tool Report", ln=True, align="C")
     pdf.ln(5)
 
-    pdf.set_font("Arial", "", 12)
+    pdf.set_font("DejaVu", "", 12)
     pdf.multi_cell(0, 8, f"JOB DESCRIPTION:\n{jd}")
     pdf.ln(5)
 
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("DejaVu", "B", 12)
     pdf.cell(0, 8, "Technical Questions:", ln=True)
-
-    pdf.set_font("Arial", "", 12)
+    pdf.set_font("DejaVu", "", 12)
     for q in tech_qs:
         pdf.multi_cell(0, 8, f"- {q}")
 
     pdf.ln(3)
-
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("DejaVu", "B", 12)
     pdf.cell(0, 8, "Behavioral Questions:", ln=True)
-
-    pdf.set_font("Arial", "", 12)
+    pdf.set_font("DejaVu", "", 12)
     for q in behav_qs:
         pdf.multi_cell(0, 8, f"- {q}")
 
     pdf.ln(3)
-
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("DejaVu", "B", 12)
     pdf.cell(0, 8, "Assessment Tasks:", ln=True)
-
-    pdf.set_font("Arial", "", 12)
+    pdf.set_font("DejaVu", "", 12)
     for t in tasks:
         pdf.multi_cell(0, 8, f"- {t}")
 
     pdf.ln(3)
-
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("DejaVu", "B", 12)
     pdf.cell(0, 8, "Scoring Rubric:", ln=True)
-
-    pdf.set_font("Arial", "", 12)
+    pdf.set_font("DejaVu", "", 12)
     for k, v in rubric.items():
         pdf.cell(0, 8, f"{k}: {v}%", ln=True)
 
-    # Convert PDF safely
-    content = pdf.output(dest="S")
-    pdf_bytes = content.encode("latin-1", "ignore")
+    pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
     st.download_button(
-        label="Download PDF Report",
+        "Download PDF Report",
         data=pdf_bytes,
         file_name="hr_report.pdf",
-        mime="application/pdf",
+        mime="application/pdf"
     )
 
-    st.success("PDF report ready! Download to showcase professionally.")
+    st.success("PDF generated successfully")
