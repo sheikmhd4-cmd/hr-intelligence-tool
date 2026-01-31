@@ -1,0 +1,80 @@
+import streamlit as st
+
+st.set_page_config(page_title="HR Prompt Engineering Tool", layout="wide")
+
+st.title("HR Prompt Engineering Tool")
+st.subheader("Convert Job Descriptions into Interview Frameworks")
+
+jd = st.text_area("Paste Job Description Here", height=200)
+
+if st.button("Generate Interview Framework"):
+
+    tech_qs = [
+        "Explain CI/CD pipelines and their importance.",
+        "How would you deploy a Python application using Docker?",
+        "What is Kubernetes and where have you used it?",
+        "Explain rollback strategies in deployments.",
+        "How do you monitor production systems?"
+    ]
+
+    behav_qs = [
+        "Describe a time you solved a complex technical problem.",
+        "How do you handle tight deadlines?",
+        "Tell us about a conflict within your team.",
+        "How do you learn new technologies quickly?",
+        "Describe a failure and what you learned from it."
+    ]
+
+    tasks = [
+        "Build a simple CI/CD pipeline for a Python application.",
+        "Deploy an application using Docker and Kubernetes.",
+        "Write a system design document for scalable deployment."
+    ]
+
+    rubric = {
+        "Technical Skill": "40%",
+        "Problem Solving": "25%",
+        "System Design": "20%",
+        "Communication": "15%"
+    }
+
+    st.markdown("## Technical Questions")
+    for q in tech_qs:
+        st.write("-", q)
+
+    st.markdown("## Behavioral Questions")
+    for q in behav_qs:
+        st.write("-", q)
+
+    st.markdown("## Assessment Tasks")
+    for t in tasks:
+        st.write("-", t)
+
+    st.markdown("## Scoring Rubric")
+    for k, v in rubric.items():
+        st.write(f"{k}: {v}")
+
+    report_text = f"""
+HR PROMPT ENGINEERING TOOL REPORT
+
+JOB DESCRIPTION:
+{jd}
+
+TECHNICAL QUESTIONS:
+{chr(10).join(tech_qs)}
+
+BEHAVIORAL QUESTIONS:
+{chr(10).join(behav_qs)}
+
+ASSESSMENT TASKS:
+{chr(10).join(tasks)}
+
+SCORING RUBRIC:
+""" + "\n".join([f"{k}: {v}" for k, v in rubric.items()])
+
+    st.download_button(
+        label="Download Report",
+        data=report_text,
+        file_name="hr_report.txt",
+        mime="text/plain"
+    )
