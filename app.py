@@ -127,7 +127,12 @@ if st.button("Generate Interview Framework"):
     for k, v in rubric.items():
         pdf.cell(0, 8, f"{k}: {v}%", ln=True)
 
-    pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
+    # Special characters-ah handle panna intha maari mathunga
+pdf_output = pdf.output(dest='S')
+if isinstance(pdf_output, str):
+    pdf_bytes = pdf_output.encode('latin-1', 'replace')
+else:
+    pdf_bytes = pdf_output
 
     st.download_button(
         label="Download PDF Report",
