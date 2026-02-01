@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from supabase import create_client
@@ -24,8 +23,12 @@ if "auth_status" not in st.session_state:
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
 
+# முடிவுகளை சேமிக்க (To fix PDF error and hide button initially)
+if "results" not in st.session_state:
+    st.session_state.results = None
 
-# ---------------- CORE ----------------
+
+# ---------------- CORE LOGIC ----------------
 SKILL_DB = {
     "python": "Python",
     "sql": "SQL",
@@ -42,11 +45,9 @@ SKILL_DB = {
     "linux": "Linux",
 }
 
-
 def extract_skills(text):
     found = [v for k, v in SKILL_DB.items() if k in text.lower()]
     return list(set(found))
-
 
 def generate_questions(skills, level):
     qs = []
@@ -55,62 +56,37 @@ def generate_questions(skills, level):
             f"Explain fundamentals of {s}.",
             f"Describe a production project using {s}.",
             f"How do you debug failures in {s} systems?",
-            f"Security risks associated with {s}.",
-            f"Scaling strategies for {s}.",
         ])
-
+    
     if level == "Junior":
-        qs.extend([
-            "What technical problem did you recently solve?",
-            "Explain a system you built end-to-end.",
-        ])
+        qs.append("What technical problem did you recently solve?")
     elif level == "Mid":
-        qs.extend([
-            "How do you mentor juniors?",
-            "How do you design fault tolerant systems?",
-        ])
+        qs.append("How do you design fault tolerant systems?")
     else:
-        qs.extend([
-            "Describe the largest system you architected.",
-            "How do you evaluate trade-offs in architecture?",
-        ])
+        qs.append("How do you evaluate trade-offs in architecture?")
 
     while len(qs) < 10:
         qs.append("Explain a complex technical challenge you solved recently.")
-
     return qs[:12]
 
-
 def generate_summary(skills, level, tech):
-    if "Machine Learning" in skills:
-        role = "Data Scientist / ML Engineer"
-    elif "DevOps" in skills:
-        role = "Cloud / DevOps Engineer"
-    elif "React" in skills:
-        role = "Frontend Engineer"
-    elif "Python" in skills:
-        role = "Backend Engineer"
-    else:
-        role = "Software Engineer"
-
+    role = "Software Engineer"
+    if "Machine Learning" in skills: role = "Data Scientist / ML Engineer"
+    elif "DevOps" in skills: role = "Cloud / DevOps Engineer"
+    elif "React" in skills: role = "Frontend Engineer"
+    
     focus = "Technical Heavy" if tech >= 65 else "Balanced"
-
-    insight = (
-        f"This JD focuses on {', '.join(skills)}. "
-        f"Candidate should demonstrate system thinking, "
-        f"problem-solving ability and leadership expected "
-        f"for a {level} role."
-    )
-
+    insight = f"This JD focuses on {', '.join(skills)}. Ideal for a {level} role."
     return role, focus, insight
 
 
-# ---------------- AUTH ----------------
+# ---------------- AUTH UI ----------------
 if not st.session_state.auth_status:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.markdown("<h1 style='text-align:center;'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
+        
         with login_tab:
             with st.form("login_form"):
                 email = st.text_input("Corporate Email")
@@ -126,6 +102,7 @@ if not st.session_state.auth_status:
                             st.rerun()
                     except:
                         st.error("Authentication failed.")
+
         with reg_tab:
             with st.form("reg_form"):
                 new_email = st.text_input("Email Address")
@@ -138,8 +115,7 @@ if not st.session_state.auth_status:
                     except Exception as e:
                         st.error(str(e))
 
-
-# ---------------- MAIN ----------------
+# ---------------- MAIN APP ----------------
 else:
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     nav = ["Framework Generator"]
@@ -150,7 +126,7 @@ else:
 
     if st.sidebar.button("Logout"):
         st.session_state.auth_status = False
-        st.session_state.user_role = None
+        st.session_state.results = None
         st.rerun()
 
     if page == "Framework Generator":
@@ -164,66 +140,81 @@ else:
             tech = st.slider("Technical Weight (%)", 0, 100, 70)
             soft = 100 - tech
 
+        # PROCESS ACTION
         if st.button("Process Assessment", use_container_width=True) and jd:
             skills = extract_skills(jd)
             role, focus, insight = generate_summary(skills, level, tech)
             questions = generate_questions(skills, level)
 
+            # Store in session state
+            st.session_state.results = {
+                "cand": cand,
+                "skills": skills,
+                "role": role,
+                "focus": focus,
+                "insight": insight,
+                "questions": questions,
+                "tech": tech,
+                "soft": soft
+            }
+
+        # DISPLAY RESULTS IF AVAILABLE
+        if st.session_state.results:
+            res = st.session_state.results
             st.divider()
+            
             r1, r2 = st.columns([1, 1])
             with r1:
                 st.subheader("Live Result Summary")
-                # Candidate name added to summary UI
-                st.write(f"**Candidate:** {cand if cand else 'N/A'}")
-                st.write(f"**Detected Skills:** {', '.join(skills)}")
-                st.write(f"**Suggested Role:** {role}")
-                st.write(f"**Focus Area:** {focus}")
-                st.info(insight)
+                st.write(f"**Candidate:** {res['cand'] if res['cand'] else 'N/A'}")
+                st.write(f"**Detected Skills:** {', '.join(res['skills'])}")
+                st.write(f"**Suggested Role:** {res['role']}")
+                st.info(res['insight'])
 
             with r2:
-                fig = go.Figure(
-                    data=[go.Pie(labels=["Technical", "Soft Skills"], values=[tech, soft], hole=0.45)]
-                )
-                fig.update_layout(height=380, width=380)
-                st.plotly_chart(fig, use_container_width=False)
+                fig = go.Figure(data=[go.Pie(labels=["Technical", "Soft Skills"], values=[res['tech'], res['soft']], hole=0.45)])
+                fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
+                st.plotly_chart(fig, use_container_width=True)
 
             st.markdown("### Targeted Interview Questions")
-            for i, q in enumerate(questions, 1):
+            for i, q in enumerate(res['questions'], 1):
                 st.info(f"{i}. {q}")
 
-        # 2. முடிவுகள் இருந்தால் மட்டும் UI மற்றும் PDF டவுன்லோட் காட்டவும்
-        if st.session_state.get('results'):
-            res = st.session_state.results
-            
-            # ... (உங்களுடைய பழைய UI Summary & Pie Chart கோடுகள் இங்கே இருக்கும்) ...
-
-            # -------- சரி செய்யப்பட்ட PDF BLOCK --------
+            # PDF GENERATION
             pdf_buffer = io.BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
             styles = getSampleStyleSheet()
-            
-            elements = []
-            elements.append(Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]))
-            elements.append(Spacer(1, 15))
-            elements.append(Paragraph(f"<b>Candidate Name:</b> {res['cand'] if res['cand'] else 'N/A'}", styles["Normal"]))
-            elements.append(Paragraph(f"<b>Role:</b> {res['role']}", styles["Normal"]))
-            elements.append(Paragraph(f"<b>Skills:</b> {', '.join(res['skills'])}", styles["Normal"]))
-            elements.append(Spacer(1, 15))
-            elements.append(Paragraph("<b>Targeted Interview Questions:</b>", styles["Heading2"]))
-            
+            elements = [
+                Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]),
+                Spacer(1, 20),
+                Paragraph(f"<b>Candidate Name:</b> {res['cand'] if res['cand'] else 'N/A'}", styles["Normal"]),
+                Paragraph(f"<b>Role:</b> {res['role']}", styles["Normal"]),
+                Paragraph(f"<b>Skills:</b> {', '.join(res['skills'])}", styles["Normal"]),
+                Spacer(1, 20),
+                Paragraph("<b>Interview Questions:</b>", styles["Heading2"]),
+                Spacer(1, 10)
+            ]
             for i, q in enumerate(res['questions'], 1):
                 elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
                 elements.append(Spacer(1, 5))
-
+            
             doc.build(elements)
-            pdf_data = pdf_buffer.getvalue() # Buffer-ல் இருந்து டேட்டாவை எடுக்கிறோம்
-
+            
             st.download_button(
-                label="📥 Download Report",
-                data=pdf_data,
-                file_name=f"Assessment_{res['cand']}.pdf" if res['cand'] else "Assessment_Report.pdf",
+                label="📥 Download Professional Assessment Report",
+                data=pdf_buffer.getvalue(),
+                file_name=f"Assessment_{res['cand']}.pdf" if res['cand'] else "Report.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
 
-
+    elif page == "Assessment History":
+        st.header("Enterprise Audit Logs")
+        try:
+            res = supabase.table("candidate_results").select("*").execute()
+            if res.data:
+                st.dataframe(pd.DataFrame(res.data), use_container_width=True)
+            else:
+                st.info("No records found.")
+        except:
+            st.error("Could not connect to database.")
