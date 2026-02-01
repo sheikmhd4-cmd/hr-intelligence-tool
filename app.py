@@ -3,11 +3,12 @@ import pandas as pd
 from supabase import create_client
 import io
 import plotly.graph_objects as go
+
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 
-# ---------------- CONFIG ----------------
+# ---------------- CONFIG ---------------- #
 
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
@@ -16,7 +17,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="HR Intel Portal", layout="wide")
 
-# ---------------- SESSION STATE ----------------
+# ---------------- SESSION ---------------- #
 
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
@@ -24,7 +25,7 @@ if "auth_status" not in st.session_state:
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
 
-# ---------------- CORE LOGIC ----------------
+# ---------------- SKILLS ---------------- #
 
 SKILL_DB = {
     "python": "Python",
@@ -40,116 +41,137 @@ SKILL_DB = {
     "ci/cd": "CI/CD",
     "terraform": "Terraform",
     "linux": "Linux",
-    "backend": "Backend",
-    "frontend": "Frontend",
-    "api": "API Development",
 }
 
+QUESTION_BANK = {
+    "Python": [
+        "Explain list vs tuple with real use cases.",
+        "What is GIL in Python?",
+        "How memory is managed?",
+        "Decorators — explain with example.",
+        "Difference between shallow and deep copy?",
+        "How do generators work?",
+        "Explain multiprocessing vs threading.",
+        "How exceptions propagate?",
+        "What are context managers?",
+        "How Python handles async IO?",
+    ],
+    "SQL": [
+        "Difference between WHERE and HAVING?",
+        "Explain indexing.",
+        "Normalize a table.",
+        "Write a JOIN query.",
+        "Primary vs Foreign key?",
+        "Clustered index?",
+        "Subqueries vs CTE?",
+        "ACID properties?",
+        "Query optimization?",
+        "Window functions?",
+    ],
+}
 
-def extract_skills(text):
-    text = text.lower()
+# ---------------- CORE LOGIC ---------------- #
+
+def extract_skills(text: str):
     found = []
-
     for k, v in SKILL_DB.items():
-        if k in text:
+        if k in text.lower():
             found.append(v)
-
-    # fallback if JD exists but nothing matched
-    if not found and len(text.strip()) > 30:
-        return ["General Technical Screening"]
 
     return list(set(found))
 
 
 def generate_questions(skills, level):
-    qs = []
+    questions = []
 
-    for s in skills:
-        if level == "Junior":
-            qs.append(f"Explain fundamentals of {s} and where you have used it.")
-        elif level == "Mid":
-            qs.append(f"Describe real-world implementations and challenges with {s}.")
-        else:
-            qs.append(f"How would you architect and optimize systems using {s}?")
+    for skill in skills:
+        base = QUESTION_BANK.get(skill, [])
 
-    return qs
+        for q in base:
+            if level == "Junior":
+                questions.append(f"[{skill}] Basics — {q}")
+            elif level == "Mid":
+                questions.append(f"[{skill}] Implementation — {q}")
+            else:
+                questions.append(f"[{skill}] Architecture — {q}")
 
+    # 🔥 ENSURE MIN 10 QUESTIONS
+    while len(questions) < 10:
+        questions.append(
+            "General: Explain a challenging technical problem you solved recently."
+        )
 
-# ---------------- AUTH UI ----------------
+    return questions[:15]
+
+# ---------------- AUTH ---------------- #
 
 if not st.session_state.auth_status:
 
     col1, col2, col3 = st.columns([1, 1.5, 1])
 
     with col2:
-        st.markdown("<h1 style='text-align:center;'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
-        st.markdown("---")
+        st.markdown("<h1 style='text-align:center'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
 
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
 
-        # ---------- LOGIN ----------
         with login_tab:
-
             with st.form("login_form"):
                 email = st.text_input("Corporate Email")
                 password = st.text_input("Password", type="password")
                 role_choice = st.selectbox("Login as", ["Admin", "User"])
 
-                submit_button = st.form_submit_button("Authenticate", use_container_width=True)
+                submit = st.form_submit_button("Authenticate", use_container_width=True)
 
-            if submit_button:
-                try:
-                    res = supabase.auth.sign_in_with_password(
-                        {"email": email, "password": password}
-                    )
+                if submit:
+                    try:
+                        res = supabase.auth.sign_in_with_password(
+                            {"email": email, "password": password}
+                        )
 
-                    if res.user:
-                        st.session_state.auth_status = True
-                        st.session_state.user_role = role_choice
-                        st.rerun()
+                        if res.user:
+                            st.session_state.auth_status = True
+                            st.session_state.user_role = role_choice
+                            st.rerun()
 
-                except:
-                    st.error("Authentication failed. Please check credentials.")
+                    except:
+                        st.error("Authentication failed")
 
-        # ---------- REGISTER ----------
         with reg_tab:
-
             with st.form("reg_form"):
                 new_email = st.text_input("Email Address")
                 new_pass = st.text_input("Set Password", type="password")
 
-                reg_button = st.form_submit_button("Create Account", use_container_width=True)
+                reg_btn = st.form_submit_button("Create Account", use_container_width=True)
 
-            if reg_button:
-                try:
-                    supabase.auth.sign_up(
-                        {"email": new_email, "password": new_pass}
-                    )
-                    st.info("Registration request sent. Check email or login.")
+                if reg_btn:
+                    try:
+                        supabase.auth.sign_up(
+                            {"email": new_email, "password": new_pass}
+                        )
+                        st.success("Registered. Check email.")
+                    except:
+                        st.error("Registration failed")
 
-                except Exception as e:
-                    st.error(str(e))
-
-# ---------------- MAIN APP ----------------
+# ---------------- MAIN APP ---------------- #
 
 else:
 
-    st.sidebar.markdown(f"### Role: **{st.session_state.user_role.upper()}**")
+    st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     st.sidebar.divider()
 
-    nav_options = ["Framework Generator"]
+    nav = ["Framework Generator"]
 
     if st.session_state.user_role == "Admin":
-        nav_options.append("Assessment History")
+        nav.append("Assessment History")
 
-    page = st.sidebar.radio("Navigation", nav_options)
+    page = st.sidebar.radio("Navigation", nav)
 
     if st.sidebar.button("Logout Session", use_container_width=True):
         st.session_state.auth_status = False
         st.session_state.user_role = None
         st.rerun()
 
-    # ---------------- FRAMEWORK GENERATOR ----------------
+    # -------- FRAMEWORK -------- #
 
     if page == "Framework Generator":
 
@@ -162,37 +184,26 @@ else:
 
         with col_p:
             cand_name = st.text_input("Candidate Name")
-            difficulty = st.select_slider("Level", options=["Junior", "Mid", "Senior"])
+            difficulty = st.select_slider("Level", ["Junior", "Mid", "Senior"])
             tech_w = st.slider("Technical Weight (%)", 0, 100, 70)
 
         soft_w = 100 - tech_w
 
-        if st.button("Process Assessment", use_container_width=True) and jd.strip():
+        if st.button("Process Assessment", use_container_width=True) and jd:
 
             skills = extract_skills(jd)
             questions = generate_questions(skills, difficulty)
 
             st.divider()
 
-            r1, r2 = st.columns([1, 1])
+            r1, r2 = st.columns(2)
 
-            # -------- SUMMARY ----------
             with r1:
-
                 st.subheader("Live Result Summary")
+                st.write(f"**Candidate:** {cand_name}")
+                st.write(f"**Competencies:** {', '.join(skills) if skills else 'N/A'}")
 
-                st.markdown(f"**Candidate:** {cand_name if cand_name else 'Unnamed'}")
-
-                st.markdown(
-                    f"**Competencies Identified:** {', '.join(skills)}"
-                )
-
-                st.markdown("**JD Snapshot:**")
-                st.caption(jd[:400] + ("..." if len(jd) > 400 else ""))
-
-            # -------- PIE ----------
             with r2:
-
                 fig = go.Figure(
                     data=[
                         go.Pie(
@@ -203,58 +214,54 @@ else:
                     ]
                 )
 
-                fig.update_layout(height=240)
+                fig.update_layout(height=220, margin=dict(t=0, b=0))
                 st.plotly_chart(fig, use_container_width=True)
 
-            # -------- QUESTIONS ----------
-            st.markdown("### Targeted Questions")
+            st.markdown("### 🎯 Targeted Questions")
 
             for i, q in enumerate(questions, 1):
                 st.info(f"{i}. {q}")
 
-            # -------- SAVE DB ----------
+            # -------- SAVE DB -------- #
+
             try:
                 supabase.table("candidate_results").insert(
                     {
                         "candidate_name": cand_name,
-                        "jd_role": f"{difficulty} Specialist",
-                        "total_score": float(tech_w),
+                        "jd_role": f"{difficulty} Role",
+                        "total_score": tech_w,
                         "created_by": st.session_state.user_role,
                     }
                 ).execute()
             except:
                 pass
 
-            # -------- PDF ----------
-buffer = io.BytesIO()
+            # -------- PDF -------- #
 
-doc = SimpleDocTemplate(buffer, pagesize=A4)
-styles = getSampleStyleSheet()
+            buffer = io.BytesIO()
 
-elements = [
-    Paragraph(f"INTERVIEW RUBRIC — {cand_name}", styles["Title"]),
-    Spacer(1, 20),
-]
+            doc = SimpleDocTemplate(buffer, pagesize=A4)
+            styles = getSampleStyleSheet()
 
-for i, q in enumerate(questions, 1):
-    elements.append(
-        Paragraph(f"{i}. {q}", styles["Normal"])
-    )
+            elements = [
+                Paragraph(f"INTERVIEW REPORT — {cand_name}", styles["Title"]),
+                Spacer(1, 20),
+            ]
 
-doc.build(elements)
+            for q in questions:
+                elements.append(Paragraph(q, styles["Normal"]))
 
-# 🔥 VERY IMPORTANT
-buffer.seek(0)
+            doc.build(elements)
+            buffer.seek(0)
 
-st.download_button(
-    "📥 Download Report",
-    buffer,
-    f"{cand_name}_Report.pdf",
-    "application/pdf",
-)
+            st.download_button(
+                "📥 Download Report",
+                buffer,
+                f"{cand_name}_Report.pdf",
+                "application/pdf",
+            )
 
-
-    # ---------------- HISTORY ----------------
+    # -------- HISTORY -------- #
 
     elif page == "Assessment History":
 
@@ -265,4 +272,4 @@ st.download_button(
         if res.data:
             st.dataframe(pd.DataFrame(res.data), use_container_width=True)
         else:
-            st.info("No records yet.")
+            st.info("No data found yet.")
