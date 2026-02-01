@@ -3,7 +3,6 @@ import pandas as pd
 from supabase import create_client
 import io
 import plotly.graph_objects as go
-import time # லாகின் இடைவெளிக்காக
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
@@ -12,7 +11,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 # ---------------- CONFIG ----------------
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="HR Intel Portal", layout="wide")
@@ -20,13 +18,10 @@ st.set_page_config(page_title="HR Intel Portal", layout="wide")
 # ---------------- SESSION ----------------
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
-
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
-
 if "results" not in st.session_state:
     st.session_state.results = None
-
 
 # ---------------- CORE LOGIC ----------------
 SKILL_DB = {
@@ -35,11 +30,13 @@ SKILL_DB = {
     "react": "React", "machine learning": "Machine Learning",
     "data analysis": "Data Analysis", "devops": "DevOps",
     "ci/cd": "CI/CD", "terraform": "Terraform", "linux": "Linux",
+    "java": "Java", "javascript": "JavaScript", "api": "API Development"
 }
 
 def extract_skills(text):
-    found = [v for k, v in SKILL_DB.items() if k in text.lower()]
-    return list(set(found))
+    text = text.lower()
+    found = [v for k, v in SKILL_DB.items() if k in text]
+    return list(set(found)) if found else ["General Technical"]
 
 def generate_questions(skills, level):
     qs = []
@@ -58,10 +55,10 @@ def generate_summary(skills, level, tech):
     if "Machine Learning" in skills: role = "Data Scientist / ML Engineer"
     elif "DevOps" in skills: role = "Cloud / DevOps Engineer"
     elif "React" in skills: role = "Frontend Engineer"
+    
     focus = "Technical Heavy" if tech >= 65 else "Balanced"
     insight = f"JD focuses on {', '.join(skills)}. Ideal for a {level} role."
     return role, focus, insight
-
 
 # ---------------- AUTH UI ----------------
 if not st.session_state.auth_status:
@@ -81,12 +78,10 @@ if not st.session_state.auth_status:
                     try:
                         res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                         if res.user:
-                            # வெற்றிகரமாக லாகின் ஆனால் மெசேஜ் காட்டிவிட்டு அப்டேட் செய்யவும்
+                            # சிங்கிள் கிளிக் லாகின் - ஸ்டேட் அப்டேட் மட்டும்
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
-                            st.success(f"Authenticated as {role_choice}! Loading portal...")
-                            time.sleep(1) # 1 வினாடி காத்திருப்பு
-                            st.rerun()
+                            st.rerun() # ஒரு முறை மட்டும் ரீ-ரன்
                     except:
                         st.error("Authentication failed. Please check credentials.")
 
@@ -103,12 +98,9 @@ if not st.session_state.auth_status:
 
 # ---------------- MAIN APP ----------------
 else:
-    # Sidebar UI
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     nav = ["Framework Generator"]
-    if st.session_state.user_role == "Admin":
-        nav.append("Assessment History")
-
+    if st.session_state.user_role == "Admin": nav.append("Assessment History")
     page = st.sidebar.radio("Navigation", nav)
 
     if st.sidebar.button("Logout Session"):
@@ -116,25 +108,25 @@ else:
         st.session_state.results = None
         st.rerun()
 
-    # --- Framework Generator ---
     if page == "Framework Generator":
         st.header("Evaluation Framework")
         c1, c2 = st.columns([1.5, 1])
         with c1:
             jd = st.text_area("Input Job Description", height=260)
         with c2:
-            cand = st.text_input("Candidate Name", placeholder="e.g. Javeed")
+            # Candidate Name இப்போது காலியாக இருக்கும் (No example name)
+            cand = st.text_input("Candidate Name", value="") 
             level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
             tech = st.slider("Technical Weight (%)", 0, 100, 70)
             soft = 100 - tech
 
         if st.button("Process Assessment", use_container_width=True) and jd:
-            skills = extract_skills(jd)
-            role, focus, insight = generate_summary(skills, level, tech)
-            questions = generate_questions(skills, level)
+            found_skills = extract_skills(jd)
+            role, focus, insight = generate_summary(found_skills, level, tech)
+            questions = generate_questions(found_skills, level)
 
             st.session_state.results = {
-                "cand": cand, "skills": skills, "role": role,
+                "cand": cand, "skills": found_skills, "role": role,
                 "focus": focus, "insight": insight, "questions": questions,
                 "tech": tech, "soft": soft
             }
@@ -186,14 +178,9 @@ else:
                 use_container_width=True
             )
 
-    # --- History ---
     elif page == "Assessment History":
         st.header("Enterprise Audit Logs")
         try:
             res_db = supabase.table("candidate_results").select("*").execute()
-            if res_db.data:
-                st.dataframe(pd.DataFrame(res_db.data), use_container_width=True)
-            else:
-                st.info("No records found in database.")
-        except:
-            st.error("Connection Error: Check Supabase settings.")
+            st.dataframe(pd.DataFrame(res_db.data), use_container_width=True)
+        except: st.error("Database connection error.")
