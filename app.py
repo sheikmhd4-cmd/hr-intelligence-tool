@@ -191,24 +191,6 @@ else:
             for i, q in enumerate(questions, 1):
                 st.info(f"{i}. {q}")
 
-           # 1. Process பட்டனுக்கு உள்ளே டேட்டாவை சேமிக்கவும்
-        if st.button("Process Assessment", use_container_width=True) and jd:
-            skills = extract_skills(jd)
-            role, focus, insight = generate_summary(skills, level, tech)
-            questions = generate_questions(skills, level)
-            
-            # இந்த Session State மிக முக்கியம் (இதுதான் PDF-ஐ பிளாங்க் ஆகாமல் தடுக்கும்)
-            st.session_state.results = {
-                "cand": cand, 
-                "skills": skills, 
-                "role": role, 
-                "focus": focus, 
-                "insight": insight, 
-                "questions": questions,
-                "tech": tech, 
-                "soft": 100 - tech
-            }
-
         # 2. முடிவுகள் இருந்தால் மட்டும் UI மற்றும் PDF டவுன்லோட் காட்டவும்
         if st.session_state.get('results'):
             res = st.session_state.results
