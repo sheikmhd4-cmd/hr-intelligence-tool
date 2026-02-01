@@ -7,7 +7,6 @@ import plotly.graph_objects as go
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
 
 # ---------------- CONFIG ----------------
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
@@ -48,61 +47,65 @@ def extract_skills(text):
     return list(set(found))
 
 
-def infer_role_from_skills(skills):
-
-    if "Machine Learning" in skills and "Data Analysis" in skills:
-        return "Data Scientist / ML Engineer"
-
-    if "AWS" in skills and "DevOps" in skills:
-        return "Cloud / DevOps Engineer"
-
-    if "React" in skills:
-        return "Frontend Engineer"
-
-    if "Python" in skills and "SQL" in skills:
-        return "Backend Engineer"
-
-    return "Software Engineer"
-
-
-def generate_summary(cand, skills, level, tech_w):
-
-    role = infer_role_from_skills(skills)
-
-    focus = "Technical Heavy" if tech_w >= 65 else "Balanced"
-
-    note = (
-        f"This JD strongly focuses on {', '.join(skills)}. "
-        f"Candidate should demonstrate architecture reasoning, debugging ability, "
-        f"scalability thinking and communication expected for {level} role."
-    )
-
-    return role, focus, note
-
-
 def generate_questions(skills, level):
 
     qs = []
 
     for s in skills:
-        qs.extend(
-            [
-                f"Explain fundamentals of {s}.",
-                f"Describe a real project using {s}.",
-                f"Performance tuning in {s}.",
-                f"Security risks in {s}.",
-                f"Scaling challenges with {s}.",
-            ]
-        )
+        qs.extend([
+            f"Explain fundamentals of {s}.",
+            f"Describe a production project using {s}.",
+            f"How do you debug failures in {s} systems?",
+            f"Security risks associated with {s}.",
+            f"Scaling strategies for {s}.",
+        ])
 
     if level == "Junior":
-        qs.append("What technical problem did you recently solve?")
+        qs.extend([
+            "What technical problem did you recently solve?",
+            "Explain a system you built end-to-end.",
+        ])
     elif level == "Mid":
-        qs.append("How do you mentor juniors?")
+        qs.extend([
+            "How do you mentor juniors?",
+            "How do you design fault tolerant systems?",
+        ])
     else:
-        qs.append("Describe architecture you designed.")
+        qs.extend([
+            "Describe the largest system you architected.",
+            "How do you evaluate trade-offs in architecture?",
+        ])
+
+    # GUARANTEE minimum 10
+    while len(qs) < 10:
+        qs.append("Explain a complex technical challenge you solved recently.")
 
     return qs[:12]
+
+
+def generate_summary(skills, level, tech):
+
+    if "Machine Learning" in skills:
+        role = "Data Scientist / ML Engineer"
+    elif "DevOps" in skills:
+        role = "Cloud / DevOps Engineer"
+    elif "React" in skills:
+        role = "Frontend Engineer"
+    elif "Python" in skills:
+        role = "Backend Engineer"
+    else:
+        role = "Software Engineer"
+
+    focus = "Technical Heavy" if tech >= 65 else "Balanced"
+
+    insight = (
+        f"This JD focuses on {', '.join(skills)}. "
+        f"Candidate should demonstrate system thinking, "
+        f"problem-solving ability and leadership expected "
+        f"for a {level} role."
+    )
+
+    return role, focus, insight
 
 
 # ---------------- AUTH ----------------
@@ -190,7 +193,7 @@ else:
 
             skills = extract_skills(jd)
 
-            role, focus, note = generate_summary(cand, skills, level, tech)
+            role, focus, insight = generate_summary(skills, level, tech)
 
             questions = generate_questions(skills, level)
 
@@ -202,12 +205,11 @@ else:
 
                 st.subheader("Live Result Summary")
 
-                st.write(f"**Candidate:** {cand}")
                 st.write(f"**Detected Skills:** {', '.join(skills)}")
                 st.write(f"**Suggested Role:** {role}")
                 st.write(f"**Focus Area:** {focus}")
 
-                st.info(note)
+                st.info(insight)
 
             with r2:
 
@@ -215,7 +217,7 @@ else:
                     data=[go.Pie(labels=["Technical", "Soft Skills"], values=[tech, soft], hole=0.45)]
                 )
 
-                fig.update_layout(height=360, width=360)
+                fig.update_layout(height=380, width=380)
 
                 st.plotly_chart(fig, use_container_width=False)
 
@@ -234,13 +236,13 @@ else:
 
             elements = []
 
-            elements.append(Paragraph(f"INTERVIEW REPORT – {cand}", styles["Title"]))
+            elements.append(Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]))
             elements.append(Spacer(1, 20))
 
-            elements.append(Paragraph(f"<b>Detected Skills:</b> {', '.join(skills)}", styles["Normal"]))
-            elements.append(Paragraph(f"<b>Suggested Role:</b> {role}", styles["Normal"]))
-            elements.append(Paragraph(f"<b>Focus Area:</b> {focus}", styles["Normal"]))
-            elements.append(Paragraph(f"<b>Assessment Insight:</b> {note}", styles["Normal"]))
+            elements.append(Paragraph(f"<b>Skills:</b> {', '.join(skills)}", styles["Normal"]))
+            elements.append(Paragraph(f"<b>Role:</b> {role}", styles["Normal"]))
+            elements.append(Paragraph(f"<b>Focus:</b> {focus}", styles["Normal"]))
+            elements.append(Paragraph(f"<b>Insight:</b> {insight}", styles["Normal"]))
 
             elements.append(Spacer(1, 20))
 
@@ -249,12 +251,12 @@ else:
 
             doc.build(elements)
 
-            buffer.seek(0)   # 🔥 IMPORTANT FIX
+            buffer.seek(0)
 
             st.download_button(
                 "📥 Download Report",
-                buffer,
-                file_name=f"{cand}_Assessment.pdf",
+                data=buffer.getvalue(),
+                file_name="Assessment_Report.pdf",
                 mime="application/pdf",
             )
 
