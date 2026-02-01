@@ -225,30 +225,34 @@ else:
             except:
                 pass
 
-            # -------- PDF ----------
-            buffer = io.BytesIO()
+           # -------- PDF ----------
+buffer = io.BytesIO()
 
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
-            styles = getSampleStyleSheet()
+doc = SimpleDocTemplate(buffer, pagesize=A4)
+styles = getSampleStyleSheet()
 
-            elements = [
-                Paragraph(f"INTERVIEW RUBRIC — {cand_name}", styles["Title"]),
-                Spacer(1, 20),
-            ]
+elements = [
+    Paragraph(f"INTERVIEW RUBRIC — {cand_name}", styles["Title"]),
+    Spacer(1, 20),
+]
 
-            for i, q in enumerate(questions, 1):
-                elements.append(
-                    Paragraph(f"{i}. {q}", styles["Normal"])
-                )
+for i, q in enumerate(questions, 1):
+    elements.append(
+        Paragraph(f"{i}. {q}", styles["Normal"])
+    )
 
-            doc.build(elements)
+doc.build(elements)
 
-            st.download_button(
-                "📥 Download Report",
-                buffer.getvalue(),
-                f"{cand_name}_Report.pdf",
-                "application/pdf",
-            )
+# 🔥 VERY IMPORTANT
+buffer.seek(0)
+
+st.download_button(
+    "📥 Download Report",
+    buffer,
+    f"{cand_name}_Report.pdf",
+    "application/pdf",
+)
+
 
     # ---------------- HISTORY ----------------
 
