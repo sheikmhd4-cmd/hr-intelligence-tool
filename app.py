@@ -1,10 +1,9 @@
-from dotenv import load_dotenv
-load_dotenv()
-
-import os
 from supabase import create_client
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+import streamlit as st
+import pandas as pd
+
+SUPABASE_URL = "https://YOURPROJECTID.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...."
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
