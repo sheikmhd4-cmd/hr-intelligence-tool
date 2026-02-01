@@ -2,9 +2,8 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 import io
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, ListFlowable, ListItem
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
 # ---------------- CONFIG ----------------
@@ -12,18 +11,15 @@ SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ---------------- RESTORED OLD FUNCTIONS (As requested) ----------------
+# Page Config for Professional Look
+st.set_page_config(page_title="HR Intel Portal", layout="wide")
+
+# ---------------- CORE LOGIC ----------------
 SKILL_DB = {
     "python": "Python", "sql": "SQL", "docker": "Docker", 
     "kubernetes": "Kubernetes", "aws": "AWS", "azure": "Azure",
     "react": "React", "machine learning": "ML", "data analysis": "Data",
     "devops": "DevOps", "ci/cd": "CI/CD", "terraform": "Terraform", "linux": "Linux",
-}
-
-ROLE_MAP = {
-    "ml": "Machine Learning Engineer", "data": "Data Analyst",
-    "devops": "DevOps Engineer", "backend": "Backend Developer",
-    "frontend": "Frontend Developer", "cloud": "Cloud Engineer",
 }
 
 def extract_skills(text):
@@ -33,137 +29,127 @@ def extract_skills(text):
         if k in t: found.append(v)
     return list(set(found))
 
-def guess_role(skills):
-    s = " ".join(skills).lower()
-    for k, v in ROLE_MAP.items():
-        if k in s: return v
-    return "Software Engineer"
-
 def generate_questions(skills, level):
     qs = []
     for s in skills:
-        if level == "Junior": qs.append(f"What is {s}? Where have you used it?")
-        elif level == "Mid": qs.append(f"Explain a project where you applied {s}.")
-        else: qs.append(f"Design a production-grade system using {s}.")
+        if level == "Junior": qs.append(f"Foundational concepts of {s} and practical usage.")
+        elif level == "Mid": qs.append(f"Implementation strategies and troubleshooting {s}.")
+        else: qs.append(f"Architectural decision-making and optimization using {s}.")
     return qs
 
-# ---------------- AUTH UI WITH DETAILED ERROR ----------------
+# ---------------- AUTH UI ----------------
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
 
 if not st.session_state.auth_status:
-    st.title("💼 HR Intelligence Portal")
-    choice = st.radio("Select Action", ["Login", "Sign Up"])
-    
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    
-    if choice == "Login":
-        role_select = st.selectbox("Login as", ["user", "admin"])
-        if st.button("Sign In"):
-            try:
-                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state.auth_status = True
-                st.session_state.user_role = role_select
-                st.rerun()
-            except Exception as e:
-                # Catching specific errors
-                st.error(f"Login Error: {str(e)}")
-                st.info("Tip: Make sure you verified your email or turned off confirmation in Supabase.")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.title("HR Intelligence Portal")
+        st.markdown("---")
+        choice = st.tabs(["Secure Login", "Account Registration"])
+        
+        with choice[0]:
+            email = st.text_input("Corporate Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_pass")
+            role = st.selectbox("Access Level", ["User", "Admin"])
+            if st.button("Authenticate", use_container_width=True):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state.auth_status = True
+                    st.session_state.user_role = role.lower()
+                    st.rerun()
+                except Exception as e:
+                    st.error("Authentication failed. Please check credentials.")
 
-    else:
-        if st.button("Register Account"):
-            try:
-                res = supabase.auth.sign_up({"email": email, "password": password})
-                st.success("Registration Successful! Now try to Login.")
-                st.info("Note: If confirmation is ON, check your email inbox.")
-            except Exception as e:
-                st.error(f"Supabase Auth Error: {str(e)}")
+        with choice[1]:
+            new_email = st.text_input("Email Address", key="reg_email")
+            new_pass = st.text_input("Set Password", type="password", key="reg_pass")
+            if st.button("Create Account", use_container_width=True):
+                try:
+                    supabase.auth.sign_up({"email": new_email, "password": new_pass})
+                    st.info("Registration request sent. Please attempt login.")
+                except Exception as e:
+                    st.error(f"Registration Error: {str(e)}")
 
-# ---------------- PROTECTED MAIN TOOL (Your Code) ----------------
+# ---------------- MAIN APP ----------------
 else:
-    st.sidebar.title(f"Role: {st.session_state.user_role.upper()}")
-    page = st.sidebar.radio("Navigate", ["Generator", "History"])
+    # Sidebar Styling
+    st.sidebar.markdown(f"### System Access: **{st.session_state.user_role.upper()}**")
+    st.sidebar.markdown("---")
+    page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment History"])
     
-    if st.sidebar.button("Logout"):
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Termintate Session", use_container_width=True):
         st.session_state.auth_status = False
         st.rerun()
 
-    if page == "Generator":
-        st.title("🧠 HR Intelligence Tool")
+    if page == "Framework Generator":
+        st.header("Assessment Framework Generator")
+        st.caption("Upload requirements to generate structured interview rubrics.")
         
-        # JD Input
-        uploaded_file = st.file_uploader("Upload JD (.txt)", type=["txt"])
-        jd = uploaded_file.read().decode("utf-8") if uploaded_file else st.text_area("Paste JD", height=200)
+        col_a, col_b = st.columns([2, 1])
+        
+        with col_a:
+            uploaded_file = st.file_uploader("Job Description (Text File)", type=["txt"])
+            jd = uploaded_file.read().decode("utf-8") if uploaded_file else st.text_area("Input Job Description", height=250)
 
-        # Rubric
-        st.subheader("🎯 Scoring Rubric")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: tech_w = st.slider("Technical", 0, 100, 40)
-        with c2: ps_w = st.slider("Problem Solving", 0, 100, 25)
-        with c3: sd_w = st.slider("System Design", 0, 100, 20)
-        with c4: comm_w = st.slider("Communication", 0, 100, 15)
+        with col_b:
+            st.subheader("Parameters")
+            difficulty = st.select_slider("Candidate Seniority", options=["Junior", "Mid", "Senior"])
+            cand_name = st.text_input("Candidate Full Name")
+            
+            st.markdown("Weightage Allocation")
+            tech_w = st.slider("Technical Proficiency", 0, 100, 50)
+            soft_w = 100 - tech_w
+            st.caption(f"Soft Skills: {soft_w}%")
 
-        difficulty = st.selectbox("Candidate Level", ["Junior", "Mid", "Senior"])
-        cand_name = st.text_input("Candidate Name")
-
-        if st.button("🚀 Generate & Save History") and jd:
+        if st.button("Generate Assessment Framework", use_container_width=True) and jd:
             skills = extract_skills(jd)
-            role = guess_role(skills)
             questions = generate_questions(skills, difficulty)
             
-            # Save to Database
-            total = tech_w + ps_w + sd_w + comm_w
-            history_data = {
-                "candidate_name": cand_name if cand_name else "Unknown",
-                "jd_role": role,
-                "total_score": float(total),
+            # Database Update
+            history_entry = {
+                "candidate_name": cand_name if cand_name else "N/A",
+                "jd_role": f"{difficulty} Specialist",
+                "total_score": float(tech_w),
                 "created_by": st.session_state.user_role
             }
-            try:
-                supabase.table("candidate_results").insert(history_data).execute()
-                st.success("Framework Generated & Saved to Cloud!")
-            except Exception as e:
-                st.error(f"Database Error: {str(e)}")
+            supabase.table("candidate_results").insert(history_entry).execute()
 
-            # PDF Build
+            st.success("Framework successfully generated and archived.")
+            
+            # Simple Professional PDF
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4)
             styles = getSampleStyleSheet()
-            story = [
-                Paragraph(f"<b>Interview Report: {role}</b>", styles["Title"]),
-                Spacer(1, 20),
-                Paragraph(f"Candidate: {cand_name}", styles["Normal"]),
-                Spacer(1, 15),
-                Paragraph("<b>Technical Questions</b>", styles["Heading2"])
+            content = [
+                Paragraph(f"Interview Rubric: {cand_name}", styles["Title"]),
+                Spacer(1, 12),
+                Paragraph(f"Seniority Level: {difficulty}", styles["Normal"]),
+                Spacer(1, 10),
+                Paragraph("Targeted Assessment Questions:", styles["Heading3"])
             ]
             for q in questions:
-                story.append(Paragraph(f"• {q}", styles["Normal"]))
+                content.append(Paragraph(f"• {q}", styles["Normal"]))
             
-            doc.build(story)
-
+            doc.build(content)
+            
             st.download_button(
-                "📥 Download PDF Report",
+                label="Download Assessment PDF",
                 data=buffer.getvalue(),
-                file_name=f"{cand_name}_Report.pdf",
-                mime="application/pdf"
+                file_name=f"Assessment_{cand_name}.pdf",
+                mime="application/pdf",
+                use_container_width=True
             )
 
-    elif page == "History":
-        st.title("📊 History Logs")
+    elif page == "Assessment History":
+        st.header("Enterprise Audit Logs")
         try:
             res = supabase.table("candidate_results").select("*").execute()
             df = pd.DataFrame(res.data)
-            
             if not df.empty:
-                if st.session_state.user_role == "admin":
-                    st.dataframe(df)
-                    if st.button("🗑️ Clear All"):
-                        supabase.table("candidate_results").delete().neq("id", 0).execute()
-                        st.rerun()
-                else:
-                    st.table(df[["candidate_name", "jd_role", "total_score"]].tail(10))
+                st.dataframe(df[["candidate_name", "jd_role", "total_score", "created_by"]], use_container_width=True)
             else:
-                st.info("No records found.")
-        except Exception as e:
-            st.error(f"History Fetch Error: {str(e)}")
+                st.info("No historical data available.")
+        except:
+            st.error("Unable to sync with cloud database.")
