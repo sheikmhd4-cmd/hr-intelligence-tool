@@ -3,6 +3,7 @@ import pandas as pd
 from supabase import create_client
 import io
 import plotly.graph_objects as go
+import time # லாகின் இடைவெளிக்காக
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
@@ -23,26 +24,17 @@ if "auth_status" not in st.session_state:
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
 
-# முடிவுகளை சேமிக்க (To fix PDF error and hide button initially)
 if "results" not in st.session_state:
     st.session_state.results = None
 
 
 # ---------------- CORE LOGIC ----------------
 SKILL_DB = {
-    "python": "Python",
-    "sql": "SQL",
-    "docker": "Docker",
-    "kubernetes": "Kubernetes",
-    "aws": "AWS",
-    "azure": "Azure",
-    "react": "React",
-    "machine learning": "Machine Learning",
-    "data analysis": "Data Analysis",
-    "devops": "DevOps",
-    "ci/cd": "CI/CD",
-    "terraform": "Terraform",
-    "linux": "Linux",
+    "python": "Python", "sql": "SQL", "docker": "Docker",
+    "kubernetes": "Kubernetes", "aws": "AWS", "azure": "Azure",
+    "react": "React", "machine learning": "Machine Learning",
+    "data analysis": "Data Analysis", "devops": "DevOps",
+    "ci/cd": "CI/CD", "terraform": "Terraform", "linux": "Linux",
 }
 
 def extract_skills(text):
@@ -57,14 +49,6 @@ def generate_questions(skills, level):
             f"Describe a production project using {s}.",
             f"How do you debug failures in {s} systems?",
         ])
-    
-    if level == "Junior":
-        qs.append("What technical problem did you recently solve?")
-    elif level == "Mid":
-        qs.append("How do you design fault tolerant systems?")
-    else:
-        qs.append("How do you evaluate trade-offs in architecture?")
-
     while len(qs) < 10:
         qs.append("Explain a complex technical challenge you solved recently.")
     return qs[:12]
@@ -74,9 +58,8 @@ def generate_summary(skills, level, tech):
     if "Machine Learning" in skills: role = "Data Scientist / ML Engineer"
     elif "DevOps" in skills: role = "Cloud / DevOps Engineer"
     elif "React" in skills: role = "Frontend Engineer"
-    
     focus = "Technical Heavy" if tech >= 65 else "Balanced"
-    insight = f"This JD focuses on {', '.join(skills)}. Ideal for a {level} role."
+    insight = f"JD focuses on {', '.join(skills)}. Ideal for a {level} role."
     return role, focus, insight
 
 
@@ -93,30 +76,34 @@ if not st.session_state.auth_status:
                 password = st.text_input("Password", type="password")
                 role_choice = st.selectbox("Login as", ["Admin", "User"])
                 submit = st.form_submit_button("Authenticate", use_container_width=True)
+                
                 if submit:
                     try:
                         res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                         if res.user:
+                            # வெற்றிகரமாக லாகின் ஆனால் மெசேஜ் காட்டிவிட்டு அப்டேட் செய்யவும்
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
+                            st.success(f"Authenticated as {role_choice}! Loading portal...")
+                            time.sleep(1) # 1 வினாடி காத்திருப்பு
                             st.rerun()
                     except:
-                        st.error("Authentication failed.")
+                        st.error("Authentication failed. Please check credentials.")
 
         with reg_tab:
             with st.form("reg_form"):
                 new_email = st.text_input("Email Address")
                 new_pass = st.text_input("Password", type="password")
-                reg = st.form_submit_button("Create Account", use_container_width=True)
-                if reg:
+                if st.form_submit_button("Create Account", use_container_width=True):
                     try:
                         supabase.auth.sign_up({"email": new_email, "password": new_pass})
-                        st.info("Registration successful.")
+                        st.info("Registration successful. You can now login.")
                     except Exception as e:
                         st.error(str(e))
 
 # ---------------- MAIN APP ----------------
 else:
+    # Sidebar UI
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     nav = ["Framework Generator"]
     if st.session_state.user_role == "Admin":
@@ -124,45 +111,37 @@ else:
 
     page = st.sidebar.radio("Navigation", nav)
 
-    if st.sidebar.button("Logout"):
+    if st.sidebar.button("Logout Session"):
         st.session_state.auth_status = False
         st.session_state.results = None
         st.rerun()
 
+    # --- Framework Generator ---
     if page == "Framework Generator":
         st.header("Evaluation Framework")
         c1, c2 = st.columns([1.5, 1])
         with c1:
             jd = st.text_area("Input Job Description", height=260)
         with c2:
-            cand = st.text_input("Candidate Name")
+            cand = st.text_input("Candidate Name", placeholder="e.g. Javeed")
             level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
             tech = st.slider("Technical Weight (%)", 0, 100, 70)
             soft = 100 - tech
 
-        # PROCESS ACTION
         if st.button("Process Assessment", use_container_width=True) and jd:
             skills = extract_skills(jd)
             role, focus, insight = generate_summary(skills, level, tech)
             questions = generate_questions(skills, level)
 
-            # Store in session state
             st.session_state.results = {
-                "cand": cand,
-                "skills": skills,
-                "role": role,
-                "focus": focus,
-                "insight": insight,
-                "questions": questions,
-                "tech": tech,
-                "soft": soft
+                "cand": cand, "skills": skills, "role": role,
+                "focus": focus, "insight": insight, "questions": questions,
+                "tech": tech, "soft": soft
             }
 
-        # DISPLAY RESULTS IF AVAILABLE
         if st.session_state.results:
             res = st.session_state.results
             st.divider()
-            
             r1, r2 = st.columns([1, 1])
             with r1:
                 st.subheader("Live Result Summary")
@@ -196,25 +175,25 @@ else:
             ]
             for i, q in enumerate(res['questions'], 1):
                 elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
-                elements.append(Spacer(1, 5))
             
             doc.build(elements)
             
             st.download_button(
-                label="📥 Download Professional Assessment Report",
+                label="📥 Download Detailed Report",
                 data=pdf_buffer.getvalue(),
                 file_name=f"Assessment_{res['cand']}.pdf" if res['cand'] else "Report.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
 
+    # --- History ---
     elif page == "Assessment History":
         st.header("Enterprise Audit Logs")
         try:
-            res = supabase.table("candidate_results").select("*").execute()
-            if res.data:
-                st.dataframe(pd.DataFrame(res.data), use_container_width=True)
+            res_db = supabase.table("candidate_results").select("*").execute()
+            if res_db.data:
+                st.dataframe(pd.DataFrame(res_db.data), use_container_width=True)
             else:
-                st.info("No records found.")
+                st.info("No records found in database.")
         except:
-            st.error("Could not connect to database.")
+            st.error("Connection Error: Check Supabase settings.")
