@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 import io
+import plotly.graph_objects as go
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -37,99 +38,102 @@ def generate_questions(skills, level):
         else: qs.append(f"Architectural decision-making and optimization using {s}.")
     return qs
 
-# ---------------- AUTH & MAIN APP ----------------
+# ---------------- AUTH CHECK ----------------
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
 
 if not st.session_state.auth_status:
-    # (Login UI remains same as previous clean version)
+    # Simplified Login for quick testing
     st.title("HR Intelligence Portal")
-    email = st.text_input("Email")
+    email = st.text_input("Corporate Email")
     password = st.text_input("Password", type="password")
-    if st.button("Login"):
+    if st.button("Login", use_container_width=True):
         try:
             supabase.auth.sign_in_with_password({"email": email, "password": password})
             st.session_state.auth_status = True
             st.rerun()
         except: st.error("Login Failed")
 else:
+    # ---------------- MAIN APP ----------------
     st.sidebar.title("HR Intel")
     page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment Logs"])
 
     if page == "Framework Generator":
         st.header("Assessment Framework Generator")
-        col1, col2 = st.columns([2, 1])
         
-        with col1:
+        col_jd, col_ctrl = st.columns([1.5, 1])
+        
+        with col_jd:
             jd = st.text_area("Paste Job Description Here", height=250)
-        with col2:
+        
+        with col_ctrl:
             cand_name = st.text_input("Candidate Name")
-            difficulty = st.select_slider("Level", options=["Junior", "Mid", "Senior"])
-            tech_w = st.slider("Technical Weightage (%)", 0, 100, 70)
+            difficulty = st.select_slider("Seniority Level", options=["Junior", "Mid", "Senior"])
+            tech_w = st.slider("Technical Focus (%)", 0, 100, 70)
             soft_w = 100 - tech_w
 
-        if st.button("Generate Full Report") and jd:
+        if st.button("Generate Evaluation Framework", use_container_width=True) and jd:
             skills = extract_skills(jd)
             questions = generate_questions(skills, difficulty)
             
-            # Database Save
-            try:
-                supabase.table("candidate_results").insert({
-                    "candidate_name": cand_name, "jd_role": f"{difficulty} Specialist",
-                    "total_score": float(tech_w), "created_by": "Admin"
-                }).execute()
-            except: pass
+            # --- PIE CHART & SUMMARY SECTION ---
+            st.divider()
+            res_col1, res_col2 = st.columns([1, 1])
+            
+            with res_col1:
+                st.subheader("Evaluation Summary")
+                st.write(f"**Candidate:** {cand_name}")
+                st.write(f"**Target Level:** {difficulty}")
+                st.write(f"**Skills Found:** {', '.join(skills) if skills else 'N/A'}")
+                
+            with res_col2:
+                # Plotly Pie Chart
+                fig = go.Figure(data=[go.Pie(
+                    labels=['Technical', 'Soft Skills'], 
+                    values=[tech_w, soft_w],
+                    hole=.4,
+                    marker_colors=['#1E3A8A', '#94A3B8']
+                )])
+                fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250, showlegend=True)
+                st.plotly_chart(fig, use_container_width=True)
 
-            # --- PDF GENERATION (Multi-Section Report) ---
+            # --- QUESTIONS SECTION ---
+            st.subheader("Targeted Interview Questions")
+            for i, q in enumerate(questions, 1):
+                st.info(f"{i}. {q}")
+
+            # --- PDF GENERATION (Professional Table Style) ---
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4)
             styles = getSampleStyleSheet()
+            title_s = ParagraphStyle('T', parent=styles['Title'], textColor=colors.HexColor("#1E3A8A"))
             
-            # Custom Styles
-            title_s = ParagraphStyle('T', parent=styles['Title'], textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
-            head_s = ParagraphStyle('H', parent=styles['Heading3'], textColor=colors.HexColor("#2563EB"), spaceBefore=10)
-            body_s = styles['Normal']
-
-            elements = []
-            
-            # 1. Header Area
-            elements.append(Paragraph("CANDIDATE ASSESSMENT FRAMEWORK", title_s))
-            elements.append(HRFlowable(width="100%", thickness=1, color=colors.black, spaceAfter=20))
-            
-            # 2. Summary Table (Like your 2nd pic)
-            data = [
-                ["Candidate Name:", cand_name],
-                ["Seniority Level:", difficulty],
-                ["Technical Weightage:", f"{tech_w}%"],
-                ["Soft Skills Weightage:", f"{soft_w}%"]
+            elements = [
+                Paragraph("CANDIDATE ASSESSMENT REPORT", title_s),
+                Spacer(1, 20),
+                Table([
+                    ["Candidate:", cand_name],
+                    ["Seniority:", difficulty],
+                    ["Tech Weight:", f"{tech_w}%"],
+                    ["Soft Skills:", f"{soft_w}%"]
+                ], style=TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (0,-1), colors.whitesmoke)])),
+                Spacer(1, 20),
+                Paragraph("<b>Interview Questions:</b>", styles['Heading3'])
             ]
-            t = Table(data, colWidths=[150, 300])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,-1), colors.whitesmoke),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                ('PADDING', (0,0), (-1,-1), 8)
-            ]))
-            elements.append(t)
-            elements.append(Spacer(1, 20))
-
-            # 3. Identified Skills Section
-            elements.append(Paragraph("IDENTIFIED COMPETENCIES", head_s))
-            elements.append(Paragraph(", ".join(skills) if skills else "General Evaluation", body_s))
-            elements.append(Spacer(1, 15))
-
-            # 4. Structured Questions Section
-            elements.append(Paragraph("STRUCTURED INTERVIEW QUESTIONS", head_s))
             for i, q in enumerate(questions, 1):
-                elements.append(Paragraph(f"<b>{i}.</b> {q}", body_s))
-                elements.append(Spacer(1, 8))
-
+                elements.append(Paragraph(f"{i}. {q}", styles['Normal']))
+                elements.append(Spacer(1, 5))
+            
             doc.build(elements)
             
-            st.success("Report Generated Successfully!")
             st.download_button(
-                label="📥 Download Detailed Assessment PDF",
+                label="📥 Download Detailed Report",
                 data=buffer.getvalue(),
-                file_name=f"Detailed_Report_{cand_name}.pdf",
-                mime="application/pdf",
-                use_container_width=True
+                file_name=f"Report_{cand_name}.pdf",
+                mime="application/pdf"
             )
+
+    elif page == "Assessment Logs":
+        st.header("Database Records")
+        res = supabase.table("candidate_results").select("*").execute()
+        st.dataframe(pd.DataFrame(res.data), use_container_width=True)
