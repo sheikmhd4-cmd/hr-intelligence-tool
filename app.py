@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 import io
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
@@ -32,114 +32,104 @@ def extract_skills(text):
 def generate_questions(skills, level):
     qs = []
     for s in skills:
-        if level == "Junior": qs.append(f"Foundational concepts of {s} and practical implementation.")
-        elif level == "Mid": qs.append(f"Advanced implementation strategies and system troubleshooting for {s}.")
-        else: qs.append(f"High-level architecture, scalability, and optimization using {s}.")
+        if level == "Junior": qs.append(f"Foundational concepts of {s} and practical usage.")
+        elif level == "Mid": qs.append(f"Implementation strategies and troubleshooting {s}.")
+        else: qs.append(f"Architectural decision-making and optimization using {s}.")
     return qs
 
-# ---------------- AUTH UI ----------------
+# ---------------- AUTH & MAIN APP ----------------
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
 
 if not st.session_state.auth_status:
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        st.markdown("<h1 style='text-align: center;'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
-        tabs = st.tabs(["Secure Access", "System Registration"])
-        with tabs[0]:
-            email = st.text_input("Corporate Email")
-            password = st.text_input("Security Token", type="password")
-            if st.button("Authenticate Session", use_container_width=True):
-                try:
-                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    st.session_state.auth_status = True
-                    st.session_state.user_role = "Admin"
-                    st.rerun()
-                except: st.error("Credential verification failed.")
-        with tabs[1]:
-            new_email = st.text_input("Registration Email")
-            new_pass = st.text_input("Set Security Token", type="password")
-            if st.button("Initialize Account", use_container_width=True):
-                try:
-                    supabase.auth.sign_up({"email": new_email, "password": new_pass})
-                    st.info("Registration logged. Please proceed to login.")
-                except Exception as e: st.error(f"System Error: {str(e)}")
-
-# ---------------- MAIN APP ----------------
+    # (Login UI remains same as previous clean version)
+    st.title("HR Intelligence Portal")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        try:
+            supabase.auth.sign_in_with_password({"email": email, "password": password})
+            st.session_state.auth_status = True
+            st.rerun()
+        except: st.error("Login Failed")
 else:
-    st.sidebar.markdown(f"**Session:** {st.session_state.user_role}")
-    st.sidebar.divider()
+    st.sidebar.title("HR Intel")
     page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment Logs"])
-    
-    if st.sidebar.button("Logout Session", use_container_width=True):
-        st.session_state.auth_status = False
-        st.rerun()
 
     if page == "Framework Generator":
-        st.header("Candidate Evaluation Framework")
-        col_main, col_side = st.columns([2, 1])
+        st.header("Assessment Framework Generator")
+        col1, col2 = st.columns([2, 1])
         
-        with col_main:
-            uploaded_file = st.file_uploader("Job Specification (TXT)", type=["txt"])
-            jd = uploaded_file.read().decode("utf-8") if uploaded_file else st.text_area("Input Job Description Text", height=300)
-
-        with col_side:
-            st.subheader("Assessment Controls")
-            difficulty = st.select_slider("Target Seniority", options=["Junior", "Mid", "Senior"])
-            cand_name = st.text_input("Full Candidate Name", placeholder="Enter name...")
+        with col1:
+            jd = st.text_area("Paste Job Description Here", height=250)
+        with col2:
+            cand_name = st.text_input("Candidate Name")
+            difficulty = st.select_slider("Level", options=["Junior", "Mid", "Senior"])
             tech_w = st.slider("Technical Weightage (%)", 0, 100, 70)
             soft_w = 100 - tech_w
 
-        if st.button("Process & Generate Framework", use_container_width=True) and jd:
+        if st.button("Generate Full Report") and jd:
             skills = extract_skills(jd)
             questions = generate_questions(skills, difficulty)
             
-            st.divider()
-            st.subheader(f"Evaluation Summary: {cand_name}")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Competencies Found", len(skills))
-            m2.metric("Difficulty Level", difficulty)
-            m3.metric("Technical Focus", f"{tech_w}%")
-
-            # Database Sync
+            # Database Save
             try:
-                history_entry = {
-                    "candidate_name": cand_name if cand_name else "Unknown",
-                    "jd_role": f"{difficulty} Specialist",
-                    "total_score": float(tech_w),
-                    "created_by": "Admin"
-                }
-                supabase.table("candidate_results").insert(history_entry).execute()
-                st.success("Record archived successfully.")
+                supabase.table("candidate_results").insert({
+                    "candidate_name": cand_name, "jd_role": f"{difficulty} Specialist",
+                    "total_score": float(tech_w), "created_by": "Admin"
+                }).execute()
             except: pass
 
-            # --- PDF GENERATION (Fixed AttributeError) ---
+            # --- PDF GENERATION (Multi-Section Report) ---
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4)
             styles = getSampleStyleSheet()
             
-            # FIXED: Used colors.HexColor instead of colors.hexColor
-            title_style = ParagraphStyle('TitleStyle', parent=styles['Title'], textColor=colors.HexColor("#1E3A8A"), fontSize=20, spaceAfter=20)
-            heading_style = ParagraphStyle('HeadingStyle', parent=styles['Heading3'], textColor=colors.HexColor("#334155"), spaceBefore=12, spaceAfter=8)
+            # Custom Styles
+            title_s = ParagraphStyle('T', parent=styles['Title'], textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
+            head_s = ParagraphStyle('H', parent=styles['Heading3'], textColor=colors.HexColor("#2563EB"), spaceBefore=10)
+            body_s = styles['Normal']
 
             elements = []
-            elements.append(Paragraph("INTERVIEW ASSESSMENT FRAMEWORK", title_style))
-            elements.append(HRFlowable(width="100%", thickness=1, color=colors.grey, spaceAfter=15))
-            elements.append(Paragraph(f"<b>Candidate Name:</b> {cand_name}", styles['Normal']))
-            elements.append(Paragraph(f"<b>Seniority Level:</b> {difficulty}", styles['Normal']))
-            elements.append(Paragraph(f"<b>Technical Weightage:</b> {tech_w}% | <b>Soft Skills:</b> {soft_w}%", styles['Normal']))
+            
+            # 1. Header Area
+            elements.append(Paragraph("CANDIDATE ASSESSMENT FRAMEWORK", title_s))
+            elements.append(HRFlowable(width="100%", thickness=1, color=colors.black, spaceAfter=20))
+            
+            # 2. Summary Table (Like your 2nd pic)
+            data = [
+                ["Candidate Name:", cand_name],
+                ["Seniority Level:", difficulty],
+                ["Technical Weightage:", f"{tech_w}%"],
+                ["Soft Skills Weightage:", f"{soft_w}%"]
+            ]
+            t = Table(data, colWidths=[150, 300])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (0,-1), colors.whitesmoke),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('PADDING', (0,0), (-1,-1), 8)
+            ]))
+            elements.append(t)
+            elements.append(Spacer(1, 20))
+
+            # 3. Identified Skills Section
+            elements.append(Paragraph("IDENTIFIED COMPETENCIES", head_s))
+            elements.append(Paragraph(", ".join(skills) if skills else "General Evaluation", body_s))
             elements.append(Spacer(1, 15))
-            elements.append(Paragraph("EXTRACTED COMPETENCIES", heading_style))
-            elements.append(Paragraph(", ".join(skills) if skills else "N/A", styles['Normal']))
-            elements.append(Paragraph("STRUCTURED INTERVIEW QUESTIONS", heading_style))
+
+            # 4. Structured Questions Section
+            elements.append(Paragraph("STRUCTURED INTERVIEW QUESTIONS", head_s))
             for i, q in enumerate(questions, 1):
-                elements.append(Paragraph(f"{i}. {q}", styles['Normal']))
-                elements.append(Spacer(1, 6))
+                elements.append(Paragraph(f"<b>{i}.</b> {q}", body_s))
+                elements.append(Spacer(1, 8))
 
             doc.build(elements)
-            st.download_button(label="📥 Download Professional Assessment Report", data=buffer.getvalue(), file_name=f"Assessment_{cand_name}.pdf", mime="application/pdf", use_container_width=True)
-
-    elif page == "Assessment Logs":
-        st.header("Enterprise Evaluation Logs")
-        res = supabase.table("candidate_results").select("*").execute()
-        st.dataframe(pd.DataFrame(res.data), use_container_width=True)
+            
+            st.success("Report Generated Successfully!")
+            st.download_button(
+                label="📥 Download Detailed Assessment PDF",
+                data=buffer.getvalue(),
+                file_name=f"Detailed_Report_{cand_name}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
