@@ -68,22 +68,24 @@ if not st.session_state.auth_status:
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
         
         with login_tab:
-            with st.form("login_form"):
-                email = st.text_input("Corporate Email")
-                password = st.text_input("Password", type="password")
-                role_choice = st.selectbox("Login as", ["Admin", "User"])
-                submit = st.form_submit_button("Authenticate", use_container_width=True)
-                
-                if submit:
+            email = st.text_input("Corporate Email")
+            password = st.text_input("Password", type="password")
+            role_choice = st.selectbox("Login as", ["Admin", "User"])
+            
+            # Form-க்கு வெளியே பட்டனை வைப்பதன் மூலம் வேகமான லாகின் உறுதி செய்யப்படுகிறது
+            if st.button("Authenticate & Enter", use_container_width=True):
+                if email and password:
                     try:
                         res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                         if res.user:
-                            # சிங்கிள் கிளிக் லாகின் - ஸ்டேட் அப்டேட் மட்டும்
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
-                            st.rerun() # ஒரு முறை மட்டும் ரீ-ரன்
-                    except:
-                        st.error("Authentication failed. Please check credentials.")
+                            st.success("Authentication Success!")
+                            st.rerun()
+                    except Exception as e:
+                        st.error("Invalid credentials or server delay. Please try once more.")
+                else:
+                    st.warning("Please enter email and password.")
 
         with reg_tab:
             with st.form("reg_form"):
@@ -92,7 +94,7 @@ if not st.session_state.auth_status:
                 if st.form_submit_button("Create Account", use_container_width=True):
                     try:
                         supabase.auth.sign_up({"email": new_email, "password": new_pass})
-                        st.info("Registration successful. You can now login.")
+                        st.info("Registration successful. Check email for verification.")
                     except Exception as e:
                         st.error(str(e))
 
@@ -114,8 +116,7 @@ else:
         with c1:
             jd = st.text_area("Input Job Description", height=260)
         with c2:
-            # Candidate Name இப்போது காலியாக இருக்கும் (No example name)
-            cand = st.text_input("Candidate Name", value="") 
+            cand = st.text_input("Candidate Name", value="") # காலியாக இருக்கும்
             level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
             tech = st.slider("Technical Weight (%)", 0, 100, 70)
             soft = 100 - tech
