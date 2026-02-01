@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnenZ2aGxyZGZmaXlzd2dubXBwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5MzIwNDcsImV4cCI6MjA4NTUwODA0N30.q99McNhi0a_B6dYp-8Tjqft0VrA8PngjoB3fkUwc8Lo"
+SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
