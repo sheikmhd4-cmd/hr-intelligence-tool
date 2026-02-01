@@ -3,37 +3,26 @@ import pandas as pd
 from supabase import create_client
 import io
 import plotly.graph_objects as go
-
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle
-)
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-
+from reportlab.lib.styles import getSampleStyleSheet
 
 # ---------------- CONFIG ----------------
-
-st.set_page_config(page_title="HR Intel Portal", layout="wide")
 
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+st.set_page_config(page_title="HR Intel Portal", layout="wide")
 
-# ---------------- SESSION INIT ----------------
+# ---------------- SESSION STATE ----------------
 
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
 
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
-
 
 # ---------------- CORE LOGIC ----------------
 
@@ -45,29 +34,44 @@ SKILL_DB = {
     "aws": "AWS",
     "azure": "Azure",
     "react": "React",
-    "machine learning": "ML",
-    "data analysis": "Data",
+    "machine learning": "Machine Learning",
+    "data analysis": "Data Analysis",
     "devops": "DevOps",
     "ci/cd": "CI/CD",
     "terraform": "Terraform",
     "linux": "Linux",
+    "backend": "Backend",
+    "frontend": "Frontend",
+    "api": "API Development",
 }
 
 
 def extract_skills(text):
-    found = [v for k, v in SKILL_DB.items() if k in text.lower()]
+    text = text.lower()
+    found = []
+
+    for k, v in SKILL_DB.items():
+        if k in text:
+            found.append(v)
+
+    # fallback if JD exists but nothing matched
+    if not found and len(text.strip()) > 30:
+        return ["General Technical Screening"]
+
     return list(set(found))
 
 
 def generate_questions(skills, level):
     qs = []
+
     for s in skills:
         if level == "Junior":
-            qs.append(f"Explain fundamentals of {s} and where it is used.")
+            qs.append(f"Explain fundamentals of {s} and where you have used it.")
         elif level == "Mid":
-            qs.append(f"Describe real-world implementation and debugging in {s}.")
+            qs.append(f"Describe real-world implementations and challenges with {s}.")
         else:
-            qs.append(f"Architect scalable systems using {s}.")
+            qs.append(f"How would you architect and optimize systems using {s}?")
+
     return qs
 
 
@@ -85,6 +89,7 @@ if not st.session_state.auth_status:
 
         # ---------- LOGIN ----------
         with login_tab:
+
             with st.form("login_form"):
                 email = st.text_input("Corporate Email")
                 password = st.text_input("Password", type="password")
@@ -92,38 +97,38 @@ if not st.session_state.auth_status:
 
                 submit_button = st.form_submit_button("Authenticate", use_container_width=True)
 
-                if submit_button:
-                    try:
-                        res = supabase.auth.sign_in_with_password(
-                            {"email": email, "password": password}
-                        )
+            if submit_button:
+                try:
+                    res = supabase.auth.sign_in_with_password(
+                        {"email": email, "password": password}
+                    )
 
-                        if res.user:
-                            st.session_state.auth_status = True
-                            st.session_state.user_role = role_choice
-                            st.rerun()
+                    if res.user:
+                        st.session_state.auth_status = True
+                        st.session_state.user_role = role_choice
+                        st.rerun()
 
-                    except Exception:
-                        st.error("Authentication failed.")
+                except:
+                    st.error("Authentication failed. Please check credentials.")
 
         # ---------- REGISTER ----------
         with reg_tab:
+
             with st.form("reg_form"):
                 new_email = st.text_input("Email Address")
                 new_pass = st.text_input("Set Password", type="password")
 
                 reg_button = st.form_submit_button("Create Account", use_container_width=True)
 
-                if reg_button:
-                    try:
-                        supabase.auth.sign_up(
-                            {"email": new_email, "password": new_pass}
-                        )
-                        st.info("Registration successful. Check email.")
+            if reg_button:
+                try:
+                    supabase.auth.sign_up(
+                        {"email": new_email, "password": new_pass}
+                    )
+                    st.info("Registration request sent. Check email or login.")
 
-                    except Exception as e:
-                        st.error(str(e))
-
+                except Exception as e:
+                    st.error(str(e))
 
 # ---------------- MAIN APP ----------------
 
@@ -144,7 +149,7 @@ else:
         st.session_state.user_role = None
         st.rerun()
 
-    # ================= FRAMEWORK =================
+    # ---------------- FRAMEWORK GENERATOR ----------------
 
     if page == "Framework Generator":
 
@@ -159,9 +164,10 @@ else:
             cand_name = st.text_input("Candidate Name")
             difficulty = st.select_slider("Level", options=["Junior", "Mid", "Senior"])
             tech_w = st.slider("Technical Weight (%)", 0, 100, 70)
-            soft_w = 100 - tech_w
 
-        if st.button("Process Assessment", use_container_width=True) and jd:
+        soft_w = 100 - tech_w
+
+        if st.button("Process Assessment", use_container_width=True) and jd.strip():
 
             skills = extract_skills(jd)
             questions = generate_questions(skills, difficulty)
@@ -170,32 +176,43 @@ else:
 
             r1, r2 = st.columns([1, 1])
 
+            # -------- SUMMARY ----------
             with r1:
-                st.subheader("Live Result Summary")
-                st.write("**Candidate:**", cand_name)
-                st.write("**Competencies:**", ", ".join(skills) if skills else "N/A")
 
+                st.subheader("Live Result Summary")
+
+                st.markdown(f"**Candidate:** {cand_name if cand_name else 'Unnamed'}")
+
+                st.markdown(
+                    f"**Competencies Identified:** {', '.join(skills)}"
+                )
+
+                st.markdown("**JD Snapshot:**")
+                st.caption(jd[:400] + ("..." if len(jd) > 400 else ""))
+
+            # -------- PIE ----------
             with r2:
+
                 fig = go.Figure(
                     data=[
                         go.Pie(
                             labels=["Technical", "Soft Skills"],
                             values=[tech_w, soft_w],
-                            hole=.4
+                            hole=0.4,
                         )
                     ]
                 )
 
-                fig.update_layout(height=220)
+                fig.update_layout(height=240)
                 st.plotly_chart(fig, use_container_width=True)
 
-            # ---------- QUESTIONS ----------
+            # -------- QUESTIONS ----------
             st.markdown("### Targeted Questions")
 
             for i, q in enumerate(questions, 1):
                 st.info(f"{i}. {q}")
 
-            # ---------- DB SAVE ----------
+            # -------- SAVE DB ----------
             try:
                 supabase.table("candidate_results").insert(
                     {
@@ -208,14 +225,14 @@ else:
             except:
                 pass
 
-            # ---------- PDF ----------
+            # -------- PDF ----------
             buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
 
+            doc = SimpleDocTemplate(buffer, pagesize=A4)
             styles = getSampleStyleSheet()
 
             elements = [
-                Paragraph(f"INTERVIEW RUBRIC – {cand_name}", styles["Title"]),
+                Paragraph(f"INTERVIEW RUBRIC — {cand_name}", styles["Title"]),
                 Spacer(1, 20),
             ]
 
@@ -233,7 +250,7 @@ else:
                 "application/pdf",
             )
 
-    # ================= HISTORY =================
+    # ---------------- HISTORY ----------------
 
     elif page == "Assessment History":
 
@@ -244,4 +261,4 @@ else:
         if res.data:
             st.dataframe(pd.DataFrame(res.data), use_container_width=True)
         else:
-            st.info("No records found.")
+            st.info("No records yet.")
