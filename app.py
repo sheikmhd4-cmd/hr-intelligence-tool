@@ -1,3 +1,6 @@
+import streamlit as st
+st.write("🔥 NEW VERSION LOADED 🔥")
+
 from supabase import create_client
 import streamlit as st
 import pandas as pd
