@@ -5,17 +5,25 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-import os
+import io
 
-# --- 1. SUPABASE CONNECTION ---
-# Intha keys unga .env la irunthu varuthu
+# ---------------- 1. CONFIGURATION & CLIENT ----------------
+# Using the keys from your .env file
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- 2. OLD CODE FUNCTIONS (Logic-ah maathala) ---
-SKILL_DB = {"python": "Python", "sql": "SQL", "docker": "Docker", "kubernetes": "Kubernetes", "aws": "AWS", "react": "React"}
-ROLE_MAP = {"ml": "Machine Learning Engineer", "data": "Data Analyst", "devops": "DevOps Engineer"}
+# ---------------- 2. ORIGINAL LOGIC (Unchanged) ----------------
+SKILL_DB = {
+    "python": "Python", "sql": "SQL", "docker": "Docker", 
+    "kubernetes": "Kubernetes", "aws": "AWS", "react": "React"
+}
+
+ROLE_MAP = {
+    "ml": "Machine Learning Engineer", 
+    "data": "Data Analyst", 
+    "devops": "DevOps Engineer"
+}
 
 def extract_skills(text):
     found = []
@@ -33,118 +41,134 @@ def guess_role(skills):
 def generate_questions(skills, level):
     qs = []
     for s in skills:
-        if level == "Junior": qs.append(f"What is {s}? Where have you used it?")
-        elif level == "Mid": qs.append(f"Explain a project where you applied {s}.")
-        else: qs.append(f"Design a production-grade system using {s}.")
+        if level == "Junior":
+            qs.append(f"Basic: What are the core concepts of {s}?")
+        elif level == "Mid":
+            qs.append(f"Intermediate: Describe a complex scenario where you used {s}.")
+        else:
+            qs.append(f"Advanced: How would you architect a system using {s} for high availability?")
     return qs
 
-# --- 3. SESSION STATE FOR LOGIN ---
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# ---------------- 3. SESSION MANAGEMENT ----------------
+if "is_authenticated" not in st.session_state:
+    st.session_state.is_authenticated = False
 if "user_role" not in st.session_state:
     st.session_state.user_role = "user"
 
-# --- 4. LOGIN PAGE ---
-def login_page():
-    st.title("🔐 HR Portal Login")
-    tab1, tab2 = st.tabs(["Login", "Sign Up"])
+# ---------------- 4. AUTHENTICATION UI ----------------
+def show_auth_page():
+    st.title("🔐 HR Intelligence Portal")
+    mode = st.tabs(["Login", "Register"])
     
-    with tab1:
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        role_choice = st.selectbox("Role", ["user", "admin"])
-        if st.button("Login"):
+    with mode[0]:
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Password", type="password", key="login_pass")
+        role = st.selectbox("Login as", ["user", "admin"])
+        if st.button("Sign In"):
             try:
-                # Supabase Auth connection
                 res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state.logged_in = True
-                st.session_state.user_role = role_choice
+                st.session_state.is_authenticated = True
+                st.session_state.user_role = role
                 st.rerun()
-            except:
-                st.error("Invalid Login! Supabase-la user create panniyacha?")
+            except Exception:
+                st.error("Authentication Failed. Check credentials or Supabase Auth settings.")
 
-    with tab2:
+    with mode[1]:
         new_email = st.text_input("New Email")
         new_pass = st.text_input("New Password", type="password")
-        if st.button("Register"):
+        if st.button("Create Account"):
             supabase.auth.sign_up({"email": new_email, "password": new_pass})
-            st.success("Account created! Now login in Tab 1.")
+            st.success("Registration successful! You can now log in.")
 
-# --- 5. MAIN APPLICATION (After Login) ---
-if not st.session_state.logged_in:
-    login_page()
+# ---------------- 5. MAIN PROTECTED APP ----------------
+if not st.session_state.is_authenticated:
+    show_auth_page()
 else:
-    st.sidebar.header(f"Welcome {st.session_state.user_role.upper()}")
-    menu = ["Generator", "History"]
-    choice = st.sidebar.selectbox("Menu", menu)
+    # Sidebar Navigation
+    st.sidebar.title(f"Role: {st.session_state.user_role.upper()}")
+    app_mode = st.sidebar.radio("Navigation", ["Framework Generator", "Candidate History"])
     
-    if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
+    if st.sidebar.button("Log Out"):
+        st.session_state.is_authenticated = False
         st.rerun()
 
-    if choice == "Generator":
-        st.title("🧠 HR Intelligence Tool")
+    if app_mode == "Framework Generator":
+        st.title("🧠 Interview Framework Generator")
         
-        # JD Input
-        jd = st.text_area("Paste Job Description", height=200)
+        # User Inputs
+        candidate = st.text_input("Candidate Name")
+        jd_input = st.text_area("Paste Job Description", height=200)
+        level = st.selectbox("Experience Level", ["Junior", "Mid", "Senior"])
         
-        # Rubric (Old Sliders)
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: tech_w = st.slider("Technical", 0, 100, 40)
-        with col2: ps_w = st.slider("Problem Solving", 0, 100, 25)
-        with col3: sd_w = st.slider("System Design", 0, 100, 20)
-        with col4: comm_w = st.slider("Communication", 0, 100, 15)
-        
-        level = st.selectbox("Candidate Level", ["Junior", "Mid", "Senior"])
-        candidate_name = st.text_input("Candidate Name")
+        # Scoring Rubric (Old Sliders)
+        st.subheader("🎯 Scoring Rubric")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: tech = st.slider("Technical", 0, 100, 40)
+        with c2: prob = st.slider("Problem Solving", 0, 100, 25)
+        with c3: sys_d = st.slider("System Design", 0, 100, 20)
+        with c4: comm = st.slider("Communication", 0, 100, 15)
 
-        if st.button("🚀 Generate & Save History"):
-            if jd:
-                skills = extract_skills(jd)
-                role = guess_role(skills)
-                questions = generate_questions(skills, level)
-                
-                # --- SAVE TO SUPABASE ---
-                history_data = {
-                    "candidate_name": candidate_name if candidate_name else "Unknown",
-                    "role": role,
-                    "total_score": float(tech_w + ps_w + sd_w + comm_w),
+        if st.button("🚀 Generate & Sync to Cloud"):
+            if jd_input:
+                # Run Logic
+                found_skills = extract_skills(jd_input)
+                detected_role = guess_role(found_skills)
+                questions = generate_questions(found_skills, level)
+                total = tech + prob + sys_d + comm
+
+                # --- SUPABASE DATABASE SYNC ---
+                history_entry = {
+                    "candidate_name": candidate if candidate else "Anonymous",
+                    "jd_role": detected_role,
+                    "score": total,
                     "created_by": st.session_state.user_role
                 }
-                supabase.table("candidate_results").insert(history_data).execute()
+                supabase.table("candidate_results").insert(history_entry).execute()
                 
-                st.success("Framework Generated & Saved!")
-                
-                # --- PDF GENERATION (Old Logic) ---
-                styles = getSampleStyleSheet()
-                story = [Paragraph(f"Interview Report: {role}", styles['Title'])]
-                # ... (Additional PDF content) ...
-                
-                pdf_path = "report.pdf"
-                doc = SimpleDocTemplate(pdf_path, pagesize=A4)
-                doc.build(story)
-                
-                with open(pdf_path, "rb") as f:
-                    st.download_button("📥 Download PDF Report", f, file_name=f"{candidate_name}_Report.pdf")
-            else:
-                st.warning("Please paste a JD.")
+                st.success("Framework Generated and Saved to Supabase!")
 
-    elif choice == "History":
+                # --- PDF GENERATOR ---
+                buffer = io.BytesIO()
+                doc = SimpleDocTemplate(buffer, pagesize=A4)
+                styles = getSampleStyleSheet()
+                elements = [
+                    Paragraph(f"Interview Report - {detected_role}", styles['Title']),
+                    Spacer(1, 12),
+                    Paragraph(f"Candidate: {candidate}", styles['Normal']),
+                    Paragraph(f"Skills: {', '.join(found_skills)}", styles['Normal']),
+                    Spacer(1, 12),
+                    Paragraph("Questions:", styles['Heading2'])
+                ]
+                for q in questions:
+                    elements.append(Paragraph(f"• {q}", styles['Normal']))
+
+                doc.build(elements)
+                
+                st.download_button(
+                    label="📥 Download PDF Report",
+                    data=buffer.getvalue(),
+                    file_name=f"{candidate}_interview.pdf",
+                    mime="application/pdf"
+                )
+            else:
+                st.error("Please provide a Job Description.")
+
+    elif app_mode == "Candidate History":
         st.title("📊 History Logs")
         
-        # Supabase Fetch
-        res = supabase.table("candidate_results").select("*").execute()
-        df = pd.DataFrame(res.data)
-        
-        if not df.empty:
+        # Fetch Data
+        response = supabase.table("candidate_results").select("*").execute()
+        data_df = pd.DataFrame(response.data)
+
+        if not data_df.empty:
             if st.session_state.user_role == "admin":
-                st.write("### Admin View: All History")
-                st.dataframe(df)
-                if st.button("🗑️ Clear All History"):
+                st.info("Admin Access: View and Manage all records.")
+                st.dataframe(data_df)
+                if st.button("🗑️ Clear Entire History"):
                     supabase.table("candidate_results").delete().neq("id", 0).execute()
                     st.rerun()
             else:
-                st.write("### User View: Recent Results")
-                st.table(df[["candidate_name", "role", "total_score"]].tail(10))
+                st.info("User Access: View recent entries.")
+                st.table(data_df[["candidate_name", "jd_role", "score"]].tail(10))
         else:
-            st.info("No history found.")
+            st.write("No history records found.")
