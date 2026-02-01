@@ -15,6 +15,12 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="HR Intel Portal", layout="wide")
 
+# ---------------- SESSION STATE INIT ----------------
+if "auth_status" not in st.session_state:
+    st.session_state.auth_status = False
+if "user_role" not in st.session_state:
+    st.session_state.user_role = None
+
 # ---------------- CORE LOGIC ----------------
 SKILL_DB = {
     "python": "Python", "sql": "SQL", "docker": "Docker", 
@@ -39,9 +45,6 @@ def generate_questions(skills, level):
     return qs
 
 # ---------------- AUTH UI ----------------
-if "auth_status" not in st.session_state:
-    st.session_state.auth_status = False
-
 if not st.session_state.auth_status:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
@@ -50,45 +53,47 @@ if not st.session_state.auth_status:
         tabs = st.tabs(["Secure Login", "Registration"])
         
         with tabs[0]:
-            email = st.text_input("Corporate Email")
-            password = st.text_input("Password", type="password")
-            # --- Role Selection Added Back ---
-            user_role = st.selectbox("Select Role", ["Admin", "User"]) 
+            email = st.text_input("Corporate Email", key="login_email_input")
+            password = st.text_input("Password", type="password", key="login_pw_input")
+            user_role = st.selectbox("Select Role", ["Admin", "User"], key="login_role_select") 
+            
             if st.button("Authenticate", use_container_width=True):
                 try:
+                    # Supabase Auth
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    st.session_state.auth_status = True
-                    st.session_state.user_role = user_role
-                    st.rerun()
-                except:
+                    if res.user:
+                        st.session_state.auth_status = True
+                        st.session_state.user_role = user_role
+                        st.success("Authentication Successful! Redirecting...")
+                        st.rerun() # லாகின் ஆனவுடன் உடனடியாக ஆப்பிற்குள் செல்லும்
+                except Exception as e:
                     st.error("Authentication failed. Please check credentials.")
 
         with tabs[1]:
-            new_email = st.text_input("Email Address")
-            new_pass = st.text_input("Set Password", type="password")
+            new_email = st.text_input("Email Address", key="reg_email_input")
+            new_pass = st.text_input("Set Password", type="password", key="reg_pw_input")
             if st.button("Create Account", use_container_width=True):
                 try:
                     supabase.auth.sign_up({"email": new_email, "password": new_pass})
-                    st.info("Registration request sent. Please attempt login.")
+                    st.info("Registration request sent. Please check email or attempt login.")
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
 
-# ---------------- MAIN APP ----------------
+# ---------------- MAIN APP (Log out check included) ----------------
 else:
-    # --- Sidebar with Role & Logout ---
-    st.sidebar.markdown(f"### Access Level: **{st.session_state.user_role.upper()}**")
+    # Sidebar
+    st.sidebar.markdown(f"### Access: **{st.session_state.user_role.upper()}**")
     st.sidebar.divider()
     page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment History"])
     
     st.sidebar.divider()
-    # --- Logout Button Added Back ---
     if st.sidebar.button("Logout Session", use_container_width=True):
         st.session_state.auth_status = False
+        st.session_state.user_role = None
         st.rerun()
 
     if page == "Framework Generator":
         st.header("Evaluation Framework")
-        
         col_jd, col_p = st.columns([1.5, 1])
         with col_jd:
             jd = st.text_area("Input Job Description", height=250)
@@ -102,17 +107,15 @@ else:
             skills = extract_skills(jd)
             questions = generate_questions(skills, difficulty)
             
-            # --- Result UI with Pie Chart ---
+            # --- UI with Pie Chart ---
             st.divider()
             r1, r2 = st.columns([1, 1])
             with r1:
-                st.subheader("Summary")
-                st.write(f"**Name:** {cand_name}")
+                st.subheader("Evaluation Summary")
+                st.write(f"**Candidate:** {cand_name}")
                 st.write(f"**Competencies:** {', '.join(skills) if skills else 'N/A'}")
-                st.write(f"**Seniority:** {difficulty}")
             
             with r2:
-                # Plotly Pie Chart Visualization
                 fig = go.Figure(data=[go.Pie(
                     labels=['Technical', 'Soft Skills'], 
                     values=[tech_w, soft_w],
@@ -122,7 +125,6 @@ else:
                 fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=200)
                 st.plotly_chart(fig, use_container_width=True)
 
-            # Questions Display
             st.markdown("### Targeted Questions")
             for i, q in enumerate(questions, 1):
                 st.info(f"{i}. {q}")
@@ -130,20 +132,22 @@ else:
             # Database Update
             try:
                 supabase.table("candidate_results").insert({
-                    "candidate_name": cand_name, "jd_role": f"{difficulty} Specialist",
-                    "total_score": float(tech_w), "created_by": st.session_state.user_role
+                    "candidate_name": cand_name, 
+                    "jd_role": f"{difficulty} Specialist",
+                    "total_score": float(tech_w), 
+                    "created_by": st.session_state.user_role
                 }).execute()
             except: pass
 
-            # --- Professional PDF ---
+            # --- PDF Report ---
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4)
             styles = getSampleStyleSheet()
             elements = [
                 Paragraph(f"INTERVIEW RUBRIC: {cand_name}", styles['Title']),
                 HRFlowable(width="100%", thickness=1, color=colors.black, spaceAfter=20),
-                Table([["Level:", difficulty], ["Tech Weight:", f"{tech_w}%"], ["Soft Skills:", f"{soft_w}%"]], 
-                      style=TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey)])),
+                Table([["Level:", difficulty], ["Technical:", f"{tech_w}%"], ["Soft Skills:", f"{soft_w}%"]], 
+                      style=TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (0,-1), colors.whitesmoke)])),
                 Spacer(1, 20),
                 Paragraph("<b>Interview Questions:</b>", styles['Heading3'])
             ]
@@ -155,5 +159,8 @@ else:
 
     elif page == "Assessment History":
         st.header("Enterprise Logs")
-        res = supabase.table("candidate_results").select("*").execute()
-        st.dataframe(pd.DataFrame(res.data), use_container_width=True)
+        try:
+            res = supabase.table("candidate_results").select("*").execute()
+            st.dataframe(pd.DataFrame(res.data), use_container_width=True)
+        except:
+            st.error("Database connection error.")
