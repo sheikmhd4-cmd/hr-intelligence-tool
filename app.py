@@ -9,6 +9,17 @@ st.set_page_config(
     layout="wide",
 )
 
+# ---------------- HELPERS ----------------
+def sanitize_text(text: str) -> str:
+    """
+    Remove characters that FPDF cannot render.
+    Keeps deployment simple and avoids Unicode crashes.
+    """
+    if not text:
+        return ""
+    return text.encode("latin-1", "ignore").decode("latin-1")
+
+
 # ---------------- TITLE ----------------
 st.title("HR Prompt Engineering Tool")
 st.markdown("Convert Job Descriptions into Interview Frameworks with Assessment & Scoring")
@@ -17,9 +28,11 @@ st.markdown("Convert Job Descriptions into Interview Frameworks with Assessment 
 uploaded_file = st.file_uploader("Upload Job Description (.txt only)", type=["txt"])
 
 if uploaded_file is not None:
-    jd = uploaded_file.read().decode("utf-8")
+    jd_raw = uploaded_file.read().decode("utf-8", errors="ignore")
 else:
-    jd = st.text_area("Or Paste Job Description Here", height=200)
+    jd_raw = st.text_area("Or Paste Job Description Here", height=200)
+
+jd = sanitize_text(jd_raw)
 
 # ---------------- SAMPLE QUESTIONS ----------------
 tech_qs = [
@@ -56,7 +69,7 @@ rubric = {
     "Technical Skill": technical_weight,
     "Problem Solving": problem_solving_weight,
     "System Design": system_design_weight,
-    "Communication": communication_weight
+    "Communication": communication_weight,
 }
 
 # ---------------- GENERATE ----------------
@@ -68,27 +81,31 @@ if st.button("Generate Interview Framework"):
     with col1:
         st.subheader("Technical Questions")
         for q in tech_qs:
-            st.write("•", q)
+            st.write("-", q)
 
         st.subheader("Behavioral Questions")
         for q in behav_qs:
-            st.write("•", q)
+            st.write("-", q)
 
         st.subheader("Assessment Tasks")
         for t in tasks:
-            st.write("•", t)
+            st.write("-", t)
 
     # ---------- RIGHT ----------
     with col2:
         st.subheader("Rubric Table")
 
-        df_rubric = pd.DataFrame(list(rubric.items()), columns=["Criteria", "Weight"])
+        df_rubric = pd.DataFrame(
+            list(rubric.items()),
+            columns=["Criteria", "Weight"]
+        )
+
         st.dataframe(df_rubric, use_container_width=True)
 
         chart = alt.Chart(df_rubric).mark_arc(innerRadius=50).encode(
             theta=alt.Theta(field="Weight", type="quantitative"),
             color=alt.Color(field="Criteria", type="nominal"),
-            tooltip=["Criteria", "Weight"]
+            tooltip=["Criteria", "Weight"],
         )
 
         st.altair_chart(chart, use_container_width=True)
@@ -99,19 +116,21 @@ if st.button("Generate Interview Framework"):
     pdf.set_margins(15, 15, 15)
     pdf.add_page()
 
+    page_width = pdf.w - 2 * pdf.l_margin
+
     pdf.set_font("Arial", "B", 16)
     pdf.cell(0, 10, "HR Prompt Engineering Tool Report", ln=True, align="C")
     pdf.ln(6)
 
-    page_width = pdf.w - 2 * pdf.l_margin
-
+    # JD
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, "Job Description", ln=True)
 
     pdf.set_font("Arial", "", 11)
-    pdf.multi_cell(page_width, 7, jd or "No JD provided.")
+    pdf.multi_cell(page_width, 7, jd or "No Job Description provided.")
     pdf.ln(4)
 
+    # Technical
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, "Technical Questions", ln=True)
 
@@ -121,6 +140,7 @@ if st.button("Generate Interview Framework"):
 
     pdf.ln(3)
 
+    # Behavioral
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, "Behavioral Questions", ln=True)
 
@@ -130,6 +150,7 @@ if st.button("Generate Interview Framework"):
 
     pdf.ln(3)
 
+    # Tasks
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, "Assessment Tasks", ln=True)
 
@@ -139,6 +160,7 @@ if st.button("Generate Interview Framework"):
 
     pdf.ln(3)
 
+    # Rubric
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, "Scoring Rubric", ln=True)
 
@@ -146,6 +168,7 @@ if st.button("Generate Interview Framework"):
     for k, v in rubric.items():
         pdf.cell(0, 8, f"{k}: {v}%", ln=True)
 
+    # Export
     pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
     st.download_button(
