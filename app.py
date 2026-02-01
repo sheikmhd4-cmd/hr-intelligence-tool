@@ -19,14 +19,12 @@ st.markdown("### Convert Job Descriptions into Smart Interview Frameworks")
 
 # ---------------- INPUT ----------------
 uploaded_file = st.file_uploader("Upload JD (.txt)", type=["txt"])
-
 if uploaded_file:
     jd = uploaded_file.read().decode("utf-8")
 else:
     jd = st.text_area("Paste Job Description", height=220)
 
 # ---------------- JD ANALYSIS ----------------
-
 SKILL_DB = {
     "python": "Python",
     "sql": "SQL",
@@ -71,11 +69,8 @@ skills = extract_skills(jd) if jd else []
 role = guess_role(skills)
 
 # ---------------- RUBRIC ----------------
-
 st.subheader("🎯 Scoring Rubric")
-
 col1, col2, col3, col4 = st.columns(4)
-
 with col1:
     tech_w = st.slider("Technical", 0, 100, 40)
 with col2:
@@ -93,7 +88,6 @@ rubric = {
 }
 
 # ---------------- QUESTION ENGINE ----------------
-
 def generate_questions(skills, level):
     qs = []
     for s in skills:
@@ -108,7 +102,6 @@ def generate_questions(skills, level):
 difficulty = st.selectbox("Candidate Level", ["Junior", "Mid", "Senior"])
 
 # ---------------- GENERATE ----------------
-
 if st.button("🚀 Generate Interview Framework") and jd:
 
     st.success("Framework generated successfully!")
@@ -136,9 +129,7 @@ if st.button("🚀 Generate Interview Framework") and jd:
         st.write("•", b)
 
     # ---------------- PDF BUILD ----------------
-
     styles = getSampleStyleSheet()
-
     story = []
 
     story.append(Paragraph("<b>HR Intelligence Interview Report</b>", styles["Title"]))
@@ -156,31 +147,22 @@ if st.button("🚀 Generate Interview Framework") and jd:
 
     story.append(Spacer(1, 15))
     story.append(Paragraph("<b>Technical Questions</b>", styles["Heading2"]))
-
-    story.append(ListFlowable(
-        [ListItem(Paragraph(q, styles["Normal"])) for q in questions]
-    ))
+    story.append(ListFlowable([ListItem(Paragraph(q, styles["Normal"])) for q in questions]))
 
     story.append(Spacer(1, 10))
     story.append(Paragraph("<b>Behavioral Questions</b>", styles["Heading2"]))
-
-    story.append(ListFlowable(
-        [ListItem(Paragraph(b, styles["Normal"])) for b in behav]
-    ))
+    story.append(ListFlowable([ListItem(Paragraph(b, styles["Normal"])) for b in behav]))
 
     story.append(Spacer(1, 15))
     story.append(Paragraph("<b>Scoring Rubric</b>", styles["Heading2"]))
-
     rubric_table = Table([[k, f"{v}%"] for k, v in rubric.items()])
     rubric_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
         ('GRID', (0,0), (-1,-1), 1, colors.grey)
     ]))
-
     story.append(rubric_table)
 
     pdf_path = "hr_interview_report.pdf"
-
     doc = SimpleDocTemplate(pdf_path, pagesize=A4)
     doc.build(story)
 
