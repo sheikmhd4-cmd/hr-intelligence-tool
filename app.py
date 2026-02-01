@@ -3,18 +3,17 @@ import pandas as pd
 import altair as alt
 from fpdf import FPDF
 
-# ---------- PAGE CONFIG ----------
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(
     page_title="HR Prompt Engineering Tool",
     layout="wide",
-    page_icon="💼"
 )
 
-# ---------- TITLE ----------
+# ---------------- TITLE ----------------
 st.title("HR Prompt Engineering Tool")
 st.markdown("Convert Job Descriptions into Interview Frameworks with Assessment & Scoring")
 
-# ---------- JOB DESCRIPTION ----------
+# ---------------- JOB DESCRIPTION ----------------
 uploaded_file = st.file_uploader("Upload Job Description (.txt only)", type=["txt"])
 
 if uploaded_file is not None:
@@ -22,7 +21,7 @@ if uploaded_file is not None:
 else:
     jd = st.text_area("Or Paste Job Description Here", height=200)
 
-# ---------- SAMPLE QUESTIONS ----------
+# ---------------- SAMPLE QUESTIONS ----------------
 tech_qs = [
     "Explain CI/CD pipelines and their importance.",
     "How would you deploy a Python application using Docker?",
@@ -45,7 +44,7 @@ tasks = [
     "Write a system design document for scalable deployment."
 ]
 
-# ---------- RUBRIC ----------
+# ---------------- RUBRIC ----------------
 st.subheader("Scoring Rubric (Editable)")
 
 technical_weight = st.slider("Technical Skill (%)", 0, 100, 40)
@@ -60,11 +59,12 @@ rubric = {
     "Communication": communication_weight
 }
 
-# ---------- GENERATE ----------
+# ---------------- GENERATE ----------------
 if st.button("Generate Interview Framework"):
 
     col1, col2 = st.columns([2, 1])
 
+    # ---------- LEFT ----------
     with col1:
         st.subheader("Technical Questions")
         for q in tech_qs:
@@ -78,56 +78,71 @@ if st.button("Generate Interview Framework"):
         for t in tasks:
             st.write("•", t)
 
+    # ---------- RIGHT ----------
     with col2:
-        df = pd.DataFrame(rubric.items(), columns=["Criteria", "Weight"])
-        st.table(df)
+        st.subheader("Rubric Table")
 
-        chart = alt.Chart(df).mark_arc(innerRadius=50).encode(
-            theta="Weight",
-            color="Criteria",
+        df_rubric = pd.DataFrame(list(rubric.items()), columns=["Criteria", "Weight"])
+        st.dataframe(df_rubric, use_container_width=True)
+
+        chart = alt.Chart(df_rubric).mark_arc(innerRadius=50).encode(
+            theta=alt.Theta(field="Weight", type="quantitative"),
+            color=alt.Color(field="Criteria", type="nominal"),
             tooltip=["Criteria", "Weight"]
         )
+
         st.altair_chart(chart, use_container_width=True)
 
-    # ---------- PDF ----------
+    # ---------------- PDF ----------------
     pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(15, 15, 15)
     pdf.add_page()
 
-    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
-    pdf.add_font("DejaVu", "B", "DejaVuSans.ttf", uni=True)
-
-    pdf.set_font("DejaVu", "B", 16)
+    pdf.set_font("Arial", "B", 16)
     pdf.cell(0, 10, "HR Prompt Engineering Tool Report", ln=True, align="C")
-    pdf.ln(5)
+    pdf.ln(6)
 
-    pdf.set_font("DejaVu", "", 12)
-    pdf.multi_cell(0, 8, f"JOB DESCRIPTION:\n{jd}")
-    pdf.ln(5)
+    page_width = pdf.w - 2 * pdf.l_margin
 
-    pdf.set_font("DejaVu", "B", 12)
-    pdf.cell(0, 8, "Technical Questions:", ln=True)
-    pdf.set_font("DejaVu", "", 12)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Job Description", ln=True)
+
+    pdf.set_font("Arial", "", 11)
+    pdf.multi_cell(page_width, 7, jd or "No JD provided.")
+    pdf.ln(4)
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Technical Questions", ln=True)
+
+    pdf.set_font("Arial", "", 11)
     for q in tech_qs:
-        pdf.multi_cell(0, 8, f"- {q}")
+        pdf.multi_cell(page_width, 7, f"- {q}")
 
     pdf.ln(3)
-    pdf.set_font("DejaVu", "B", 12)
-    pdf.cell(0, 8, "Behavioral Questions:", ln=True)
-    pdf.set_font("DejaVu", "", 12)
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Behavioral Questions", ln=True)
+
+    pdf.set_font("Arial", "", 11)
     for q in behav_qs:
-        pdf.multi_cell(0, 8, f"- {q}")
+        pdf.multi_cell(page_width, 7, f"- {q}")
 
     pdf.ln(3)
-    pdf.set_font("DejaVu", "B", 12)
-    pdf.cell(0, 8, "Assessment Tasks:", ln=True)
-    pdf.set_font("DejaVu", "", 12)
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Assessment Tasks", ln=True)
+
+    pdf.set_font("Arial", "", 11)
     for t in tasks:
-        pdf.multi_cell(0, 8, f"- {t}")
+        pdf.multi_cell(page_width, 7, f"- {t}")
 
     pdf.ln(3)
-    pdf.set_font("DejaVu", "B", 12)
-    pdf.cell(0, 8, "Scoring Rubric:", ln=True)
-    pdf.set_font("DejaVu", "", 12)
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Scoring Rubric", ln=True)
+
+    pdf.set_font("Arial", "", 11)
     for k, v in rubric.items():
         pdf.cell(0, 8, f"{k}: {v}%", ln=True)
 
@@ -137,7 +152,7 @@ if st.button("Generate Interview Framework"):
         "Download PDF Report",
         data=pdf_bytes,
         file_name="hr_report.pdf",
-        mime="application/pdf"
+        mime="application/pdf",
     )
 
-    st.success("PDF generated successfully")
+    st.success("PDF generated successfully.")
