@@ -7,12 +7,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
-# ---------------- 1. CONFIGURATION ----------------
+# ---------------- CONFIG ----------------
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ---------------- 2. YOUR OLD CODE LOGIC (Restored) ----------------
+# ---------------- RESTORED OLD FUNCTIONS (As requested) ----------------
 SKILL_DB = {
     "python": "Python", "sql": "SQL", "docker": "Docker", 
     "kubernetes": "Kubernetes", "aws": "AWS", "azure": "Azure",
@@ -43,17 +43,14 @@ def generate_questions(skills, level):
     qs = []
     for s in skills:
         if level == "Junior": qs.append(f"What is {s}? Where have you used it?")
-        elif level == "Mid": qs.append(f"Explain a project where you applied {s}. What challenges arose?")
-        else: qs.append(f"Design a production-grade system using {s}. How would you scale it?")
+        elif level == "Mid": qs.append(f"Explain a project where you applied {s}.")
+        else: qs.append(f"Design a production-grade system using {s}.")
     return qs
 
-# ---------------- 3. SESSION STATE ----------------
+# ---------------- AUTH UI WITH DETAILED ERROR ----------------
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
-if "user_role" not in st.session_state:
-    st.session_state.user_role = "user"
 
-# ---------------- 4. LOGIN / SIGNUP UI ----------------
 if not st.session_state.auth_status:
     st.title("💼 HR Intelligence Portal")
     choice = st.radio("Select Action", ["Login", "Sign Up"])
@@ -69,14 +66,21 @@ if not st.session_state.auth_status:
                 st.session_state.auth_status = True
                 st.session_state.user_role = role_select
                 st.rerun()
-            except:
-                st.error("Login Failed. Check Supabase Auth Users.")
+            except Exception as e:
+                # Catching specific errors
+                st.error(f"Login Error: {str(e)}")
+                st.info("Tip: Make sure you verified your email or turned off confirmation in Supabase.")
+
     else:
         if st.button("Register Account"):
-            supabase.auth.sign_up({"email": email, "password": password})
-            st.success("Registration Sent! Check your email or try logging in.")
+            try:
+                res = supabase.auth.sign_up({"email": email, "password": password})
+                st.success("Registration Successful! Now try to Login.")
+                st.info("Note: If confirmation is ON, check your email inbox.")
+            except Exception as e:
+                st.error(f"Supabase Auth Error: {str(e)}")
 
-# ---------------- 5. MAIN APP (Protected) ----------------
+# ---------------- PROTECTED MAIN TOOL (Your Code) ----------------
 else:
     st.sidebar.title(f"Role: {st.session_state.user_role.upper()}")
     page = st.sidebar.radio("Navigate", ["Generator", "History"])
@@ -88,14 +92,11 @@ else:
     if page == "Generator":
         st.title("🧠 HR Intelligence Tool")
         
-        # --- INPUTS (Your Old Code Structure) ---
+        # JD Input
         uploaded_file = st.file_uploader("Upload JD (.txt)", type=["txt"])
-        if uploaded_file:
-            jd = uploaded_file.read().decode("utf-8")
-        else:
-            jd = st.text_area("Paste Job Description", height=220)
+        jd = uploaded_file.read().decode("utf-8") if uploaded_file else st.text_area("Paste JD", height=200)
 
-        # --- SCORING RUBRIC ---
+        # Rubric
         st.subheader("🎯 Scoring Rubric")
         c1, c2, c3, c4 = st.columns(4)
         with c1: tech_w = st.slider("Technical", 0, 100, 40)
@@ -106,12 +107,12 @@ else:
         difficulty = st.selectbox("Candidate Level", ["Junior", "Mid", "Senior"])
         cand_name = st.text_input("Candidate Name")
 
-        if st.button("🚀 Generate Interview Framework") and jd:
+        if st.button("🚀 Generate & Save History") and jd:
             skills = extract_skills(jd)
             role = guess_role(skills)
             questions = generate_questions(skills, difficulty)
             
-            # --- SAVE TO SUPABASE ---
+            # Save to Database
             total = tech_w + ps_w + sd_w + comm_w
             history_data = {
                 "candidate_name": cand_name if cand_name else "Unknown",
@@ -119,44 +120,50 @@ else:
                 "total_score": float(total),
                 "created_by": st.session_state.user_role
             }
-            supabase.table("candidate_results").insert(history_data).execute()
-            
-            st.success("Framework Generated & Saved to Cloud!")
+            try:
+                supabase.table("candidate_results").insert(history_data).execute()
+                st.success("Framework Generated & Saved to Cloud!")
+            except Exception as e:
+                st.error(f"Database Error: {str(e)}")
 
-            # --- PDF BUILDER (Restored your specific style) ---
+            # PDF Build
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4)
             styles = getSampleStyleSheet()
             story = [
-                Paragraph("<b>HR Intelligence Interview Report</b>", styles["Title"]),
+                Paragraph(f"<b>Interview Report: {role}</b>", styles["Title"]),
                 Spacer(1, 20),
-                Paragraph(f"<b>Candidate:</b> {cand_name}", styles["Normal"]),
-                Paragraph(f"<b>Detected Role:</b> {role}", styles["Normal"]),
+                Paragraph(f"Candidate: {cand_name}", styles["Normal"]),
                 Spacer(1, 15),
-                Paragraph("<b>Technical Questions</b>", styles["Heading2"]),
-                ListFlowable([ListItem(Paragraph(q, styles["Normal"])) for q in questions])
+                Paragraph("<b>Technical Questions</b>", styles["Heading2"])
             ]
+            for q in questions:
+                story.append(Paragraph(f"• {q}", styles["Normal"]))
+            
             doc.build(story)
 
             st.download_button(
                 "📥 Download PDF Report",
                 data=buffer.getvalue(),
-                file_name="HR_Report.pdf",
+                file_name=f"{cand_name}_Report.pdf",
                 mime="application/pdf"
             )
 
     elif page == "History":
         st.title("📊 History Logs")
-        res = supabase.table("candidate_results").select("*").execute()
-        df = pd.DataFrame(res.data)
-
-        if not df.empty:
-            if st.session_state.user_role == "admin":
-                st.subheader("Admin Master History")
-                st.dataframe(df)
-                if st.button("🗑️ Clear All History"):
-                    supabase.table("candidate_results").delete().neq("id", 0).execute()
-                    st.rerun()
+        try:
+            res = supabase.table("candidate_results").select("*").execute()
+            df = pd.DataFrame(res.data)
+            
+            if not df.empty:
+                if st.session_state.user_role == "admin":
+                    st.dataframe(df)
+                    if st.button("🗑️ Clear All"):
+                        supabase.table("candidate_results").delete().neq("id", 0).execute()
+                        st.rerun()
+                else:
+                    st.table(df[["candidate_name", "jd_role", "total_score"]].tail(10))
             else:
-                st.subheader("Recent Candidate Logs")
-                st.table(df[["candidate_name", "jd_role", "total_score"]].tail(10))
+                st.info("No records found.")
+        except Exception as e:
+            st.error(f"History Fetch Error: {str(e)}")
