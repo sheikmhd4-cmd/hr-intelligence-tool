@@ -48,9 +48,7 @@ def extract_skills(text):
 
 
 def generate_questions(skills, level):
-
     qs = []
-
     for s in skills:
         qs.extend([
             f"Explain fundamentals of {s}.",
@@ -76,7 +74,6 @@ def generate_questions(skills, level):
             "How do you evaluate trade-offs in architecture?",
         ])
 
-    # GUARANTEE minimum 10
     while len(qs) < 10:
         qs.append("Explain a complex technical challenge you solved recently.")
 
@@ -84,7 +81,6 @@ def generate_questions(skills, level):
 
 
 def generate_summary(skills, level, tech):
-
     if "Machine Learning" in skills:
         role = "Data Scientist / ML Engineer"
     elif "DevOps" in skills:
@@ -110,25 +106,16 @@ def generate_summary(skills, level, tech):
 
 # ---------------- AUTH ----------------
 if not st.session_state.auth_status:
-
     col1, col2, col3 = st.columns([1, 1.5, 1])
-
     with col2:
-
         st.markdown("<h1 style='text-align:center;'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
-
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
-
         with login_tab:
-
             with st.form("login_form"):
-
                 email = st.text_input("Corporate Email")
                 password = st.text_input("Password", type="password")
                 role_choice = st.selectbox("Login as", ["Admin", "User"])
-
                 submit = st.form_submit_button("Authenticate", use_container_width=True)
-
                 if submit:
                     try:
                         res = supabase.auth.sign_in_with_password({"email": email, "password": password})
@@ -138,16 +125,11 @@ if not st.session_state.auth_status:
                             st.rerun()
                     except:
                         st.error("Authentication failed.")
-
         with reg_tab:
-
             with st.form("reg_form"):
-
                 new_email = st.text_input("Email Address")
                 new_pass = st.text_input("Password", type="password")
-
                 reg = st.form_submit_button("Create Account", use_container_width=True)
-
                 if reg:
                     try:
                         supabase.auth.sign_up({"email": new_email, "password": new_pass})
@@ -158,11 +140,8 @@ if not st.session_state.auth_status:
 
 # ---------------- MAIN ----------------
 else:
-
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
-
     nav = ["Framework Generator"]
-
     if st.session_state.user_role == "Admin":
         nav.append("Assessment History")
 
@@ -173,16 +152,11 @@ else:
         st.session_state.user_role = None
         st.rerun()
 
-    # -------- FRAMEWORK --------
     if page == "Framework Generator":
-
         st.header("Evaluation Framework")
-
         c1, c2 = st.columns([1.5, 1])
-
         with c1:
             jd = st.text_area("Input Job Description", height=260)
-
         with c2:
             cand = st.text_input("Candidate Name")
             level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
@@ -190,81 +164,65 @@ else:
             soft = 100 - tech
 
         if st.button("Process Assessment", use_container_width=True) and jd:
-
             skills = extract_skills(jd)
-
             role, focus, insight = generate_summary(skills, level, tech)
-
             questions = generate_questions(skills, level)
 
             st.divider()
-
             r1, r2 = st.columns([1, 1])
-
             with r1:
-
                 st.subheader("Live Result Summary")
-
+                # Candidate name added to summary UI
+                st.write(f"**Candidate:** {cand if cand else 'N/A'}")
                 st.write(f"**Detected Skills:** {', '.join(skills)}")
                 st.write(f"**Suggested Role:** {role}")
                 st.write(f"**Focus Area:** {focus}")
-
                 st.info(insight)
 
             with r2:
-
                 fig = go.Figure(
                     data=[go.Pie(labels=["Technical", "Soft Skills"], values=[tech, soft], hole=0.45)]
                 )
-
                 fig.update_layout(height=380, width=380)
-
                 st.plotly_chart(fig, use_container_width=False)
 
-            # -------- QUESTIONS --------
             st.markdown("### Targeted Interview Questions")
-
             for i, q in enumerate(questions, 1):
                 st.info(f"{i}. {q}")
 
             # -------- PDF --------
             buffer = io.BytesIO()
-
             doc = SimpleDocTemplate(buffer, pagesize=A4)
-
             styles = getSampleStyleSheet()
-
             elements = []
 
             elements.append(Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]))
             elements.append(Spacer(1, 20))
 
+            # Candidate name added to PDF elements
+            elements.append(Paragraph(f"<b>Candidate Name:</b> {cand if cand else 'N/A'}", styles["Normal"]))
             elements.append(Paragraph(f"<b>Skills:</b> {', '.join(skills)}", styles["Normal"]))
             elements.append(Paragraph(f"<b>Role:</b> {role}", styles["Normal"]))
             elements.append(Paragraph(f"<b>Focus:</b> {focus}", styles["Normal"]))
             elements.append(Paragraph(f"<b>Insight:</b> {insight}", styles["Normal"]))
 
             elements.append(Spacer(1, 20))
+            elements.append(Paragraph("<b>Targeted Questions:</b>", styles["Heading2"]))
 
             for i, q in enumerate(questions, 1):
                 elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
 
             doc.build(elements)
-
             buffer.seek(0)
 
             st.download_button(
                 "📥 Download Report",
                 data=buffer.getvalue(),
-                file_name="Assessment_Report.pdf",
+                file_name=f"Assessment_{cand}.pdf" if cand else "Assessment_Report.pdf",
                 mime="application/pdf",
             )
 
-    # -------- HISTORY --------
     elif page == "Assessment History":
-
         st.header("Enterprise Audit Logs")
-
         res = supabase.table("candidate_results").select("*").execute()
-
         st.dataframe(pd.DataFrame(res.data), use_container_width=True)
