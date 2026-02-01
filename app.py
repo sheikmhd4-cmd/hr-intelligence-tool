@@ -3,13 +3,11 @@ import pandas as pd
 from supabase import create_client
 import io
 import plotly.graph_objects as go
-
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 
-# ---------------- CONFIG ---------------- #
-
+# ---------------- CONFIG ----------------
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 
@@ -17,112 +15,86 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="HR Intel Portal", layout="wide")
 
-# ---------------- SESSION ---------------- #
-
+# ---------------- SESSION STATE ----------------
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
 
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
 
-# ---------------- SKILLS ---------------- #
+# ---------------- SKILL DATABASE ----------------
 
-SKILL_DB = {
-    "python": "Python",
-    "sql": "SQL",
-    "docker": "Docker",
-    "kubernetes": "Kubernetes",
-    "aws": "AWS",
-    "azure": "Azure",
-    "react": "React",
-    "machine learning": "Machine Learning",
-    "data analysis": "Data Analysis",
-    "devops": "DevOps",
-    "ci/cd": "CI/CD",
-    "terraform": "Terraform",
-    "linux": "Linux",
+SKILL_ALIASES = {
+    "Python": ["python", "django", "flask", "fastapi"],
+    "SQL": ["sql", "postgres", "postgresql", "mysql"],
+    "AWS": ["aws", "ec2", "s3", "lambda"],
+    "Docker": ["docker", "container"],
+    "Kubernetes": ["kubernetes", "k8s"],
+    "React": ["react", "frontend"],
+    "DevOps": ["devops", "ci/cd", "pipeline"],
+    "Linux": ["linux", "ubuntu"],
+    "Machine Learning": ["ml", "machine learning", "ai"],
+    "Data Analysis": ["data", "analytics"],
 }
 
-QUESTION_BANK = {
-    "Python": [
-        "Explain list vs tuple with real use cases.",
-        "What is GIL in Python?",
-        "How memory is managed?",
-        "Decorators — explain with example.",
-        "Difference between shallow and deep copy?",
-        "How do generators work?",
-        "Explain multiprocessing vs threading.",
-        "How exceptions propagate?",
-        "What are context managers?",
-        "How Python handles async IO?",
-    ],
-    "SQL": [
-        "Difference between WHERE and HAVING?",
-        "Explain indexing.",
-        "Normalize a table.",
-        "Write a JOIN query.",
-        "Primary vs Foreign key?",
-        "Clustered index?",
-        "Subqueries vs CTE?",
-        "ACID properties?",
-        "Query optimization?",
-        "Window functions?",
-    ],
-}
-
-# ---------------- CORE LOGIC ---------------- #
 
 def extract_skills(text: str):
+    text = text.lower()
     found = []
-    for k, v in SKILL_DB.items():
-        if k in text.lower():
-            found.append(v)
+
+    for skill, keys in SKILL_ALIASES.items():
+        for k in keys:
+            if k in text:
+                found.append(skill)
+                break
 
     return list(set(found))
 
 
 def generate_questions(skills, level):
+
     questions = []
 
-    for skill in skills:
-        base = QUESTION_BANK.get(skill, [])
-
-        for q in base:
+    for s in skills:
+        for i in range(1, 4):
             if level == "Junior":
-                questions.append(f"[{skill}] Basics — {q}")
+                questions.append(f"[{s}] Explain core fundamentals. ({i})")
             elif level == "Mid":
-                questions.append(f"[{skill}] Implementation — {q}")
+                questions.append(f"[{s}] Describe a production issue you fixed. ({i})")
             else:
-                questions.append(f"[{skill}] Architecture — {q}")
+                questions.append(f"[{s}] Design a scalable architecture. ({i})")
 
-    # 🔥 ENSURE MIN 10 QUESTIONS
     while len(questions) < 10:
         questions.append(
-            "General: Explain a challenging technical problem you solved recently."
+            "General: Walk through a challenging technical problem you solved recently."
         )
 
-    return questions[:15]
+    return questions
 
-# ---------------- AUTH ---------------- #
+
+# ---------------- AUTH UI ----------------
 
 if not st.session_state.auth_status:
 
     col1, col2, col3 = st.columns([1, 1.5, 1])
 
     with col2:
+
         st.markdown("<h1 style='text-align:center'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
+        st.markdown("---")
 
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
 
         with login_tab:
             with st.form("login_form"):
+
                 email = st.text_input("Corporate Email")
                 password = st.text_input("Password", type="password")
                 role_choice = st.selectbox("Login as", ["Admin", "User"])
 
-                submit = st.form_submit_button("Authenticate", use_container_width=True)
+                submit_button = st.form_submit_button("Authenticate", use_container_width=True)
 
-                if submit:
+                if submit_button:
                     try:
                         res = supabase.auth.sign_in_with_password(
                             {"email": email, "password": password}
@@ -134,44 +106,47 @@ if not st.session_state.auth_status:
                             st.rerun()
 
                     except:
-                        st.error("Authentication failed")
+                        st.error("Authentication failed. Please check credentials.")
 
         with reg_tab:
             with st.form("reg_form"):
+
                 new_email = st.text_input("Email Address")
                 new_pass = st.text_input("Set Password", type="password")
 
-                reg_btn = st.form_submit_button("Create Account", use_container_width=True)
+                reg_button = st.form_submit_button("Create Account", use_container_width=True)
 
-                if reg_btn:
+                if reg_button:
                     try:
                         supabase.auth.sign_up(
                             {"email": new_email, "password": new_pass}
                         )
-                        st.success("Registered. Check email.")
-                    except:
-                        st.error("Registration failed")
+                        st.info("Registration successful. Try login.")
 
-# ---------------- MAIN APP ---------------- #
+                    except Exception as e:
+                        st.error(str(e))
+
+
+# ---------------- MAIN APP ----------------
 
 else:
 
-    st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
+    st.sidebar.markdown(f"### Role: **{st.session_state.user_role.upper()}**")
     st.sidebar.divider()
 
-    nav = ["Framework Generator"]
+    nav_options = ["Framework Generator"]
 
     if st.session_state.user_role == "Admin":
-        nav.append("Assessment History")
+        nav_options.append("Assessment History")
 
-    page = st.sidebar.radio("Navigation", nav)
+    page = st.sidebar.radio("Navigation", nav_options)
 
     if st.sidebar.button("Logout Session", use_container_width=True):
         st.session_state.auth_status = False
         st.session_state.user_role = None
         st.rerun()
 
-    # -------- FRAMEWORK -------- #
+    # -------- FRAMEWORK PAGE --------
 
     if page == "Framework Generator":
 
@@ -184,7 +159,7 @@ else:
 
         with col_p:
             cand_name = st.text_input("Candidate Name")
-            difficulty = st.select_slider("Level", ["Junior", "Mid", "Senior"])
+            difficulty = st.select_slider("Level", options=["Junior", "Mid", "Senior"])
             tech_w = st.slider("Technical Weight (%)", 0, 100, 70)
 
         soft_w = 100 - tech_w
@@ -194,14 +169,16 @@ else:
             skills = extract_skills(jd)
             questions = generate_questions(skills, difficulty)
 
+            # -------- SUMMARY --------
+
             st.divider()
 
-            r1, r2 = st.columns(2)
+            r1, r2 = st.columns([1, 1])
 
             with r1:
                 st.subheader("Live Result Summary")
-                st.write(f"**Candidate:** {cand_name}")
-                st.write(f"**Competencies:** {', '.join(skills) if skills else 'N/A'}")
+                st.write(f"**Candidate:** {cand_name or 'N/A'}")
+                st.write(f"**Competencies:** {', '.join(skills)}")
 
             with r2:
                 fig = go.Figure(
@@ -214,29 +191,32 @@ else:
                     ]
                 )
 
-                fig.update_layout(height=220, margin=dict(t=0, b=0))
+                fig.update_layout(height=220, margin=dict(t=0, b=0, l=0, r=0))
                 st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("### 🎯 Targeted Questions")
+            # -------- QUESTIONS --------
+
+            st.markdown("### Targeted Questions")
 
             for i, q in enumerate(questions, 1):
                 st.info(f"{i}. {q}")
 
-            # -------- SAVE DB -------- #
+            # -------- DB SAVE --------
 
             try:
                 supabase.table("candidate_results").insert(
                     {
                         "candidate_name": cand_name,
-                        "jd_role": f"{difficulty} Role",
-                        "total_score": tech_w,
+                        "jd_role": f"{difficulty} Specialist",
+                        "total_score": float(tech_w),
                         "created_by": st.session_state.user_role,
                     }
                 ).execute()
+
             except:
                 pass
 
-            # -------- PDF -------- #
+            # -------- PDF --------
 
             buffer = io.BytesIO()
 
@@ -244,24 +224,25 @@ else:
             styles = getSampleStyleSheet()
 
             elements = [
-                Paragraph(f"INTERVIEW REPORT — {cand_name}", styles["Title"]),
+                Paragraph(f"INTERVIEW RUBRIC – {cand_name}", styles["Title"]),
+                Spacer(1, 20),
+                Paragraph(f"<b>Competencies:</b> {', '.join(skills)}", styles["Normal"]),
                 Spacer(1, 20),
             ]
 
-            for q in questions:
-                elements.append(Paragraph(q, styles["Normal"]))
+            for i, q in enumerate(questions, 1):
+                elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
 
             doc.build(elements)
-            buffer.seek(0)
 
             st.download_button(
                 "📥 Download Report",
-                buffer,
+                buffer.getvalue(),
                 f"{cand_name}_Report.pdf",
                 "application/pdf",
             )
 
-    # -------- HISTORY -------- #
+    # -------- HISTORY PAGE --------
 
     elif page == "Assessment History":
 
@@ -269,7 +250,4 @@ else:
 
         res = supabase.table("candidate_results").select("*").execute()
 
-        if res.data:
-            st.dataframe(pd.DataFrame(res.data), use_container_width=True)
-        else:
-            st.info("No data found yet.")
+        st.dataframe(pd.DataFrame(res.data), use_container_width=True)
