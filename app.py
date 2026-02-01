@@ -15,7 +15,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="HR Intel Portal", layout="wide")
 
-# Session State initialization - மிக முக்கியம்
+# Session State Initialization
 if "auth_status" not in st.session_state:
     st.session_state.auth_status = False
 if "user_role" not in st.session_state:
@@ -42,55 +42,55 @@ def generate_questions(skills, level):
     return qs
 
 # ---------------- AUTH UI ----------------
-def show_login_page():
+if not st.session_state.auth_status:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.markdown("<h1 style='text-align: center;'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
         st.markdown("---")
-        tabs = st.tabs(["Secure Login", "Registration"])
         
-        with tabs[0]:
-            email = st.text_input("Corporate Email", key="l_email")
-            password = st.text_input("Password", type="password", key="l_pw")
-            role_choice = st.selectbox("Login as", ["Admin", "User"], key="l_role") 
-            
-            if st.button("Authenticate", use_container_width=True):
-                try:
-                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    if res.user:
-                        # லாகின் வெற்றிகரமாக முடிந்தால் ஸ்டேட்டை மாற்றி உடனே ரீ-ரன் செய்கிறோம்
-                        st.session_state.auth_status = True
-                        st.session_state.user_role = role_choice
-                        st.rerun() 
-                except:
-                    st.error("Authentication failed. Please check credentials.")
+        login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
+        
+        with login_tab:
+            # Form பயன்படுத்தினால் ஒரு கிளிக்கிலேயே சப்மிட் ஆகும்
+            with st.form("login_form"):
+                email = st.text_input("Corporate Email")
+                password = st.text_input("Password", type="password")
+                role_choice = st.selectbox("Login as", ["Admin", "User"])
+                submit_button = st.form_submit_button("Authenticate", use_container_width=True)
+                
+                if submit_button:
+                    try:
+                        res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                        if res.user:
+                            st.session_state.auth_status = True
+                            st.session_state.user_role = role_choice
+                            st.rerun() # உடனடி ரீ-ரன்
+                    except Exception as e:
+                        st.error("Authentication failed. Please check credentials.")
 
-        with tabs[1]:
-            new_email = st.text_input("Email Address", key="r_email")
-            new_pass = st.text_input("Set Password", type="password", key="r_pw")
-            if st.button("Create Account", use_container_width=True):
-                try:
-                    supabase.auth.sign_up({"email": new_email, "password": new_pass})
-                    st.info("Registration request sent. Please check email or attempt login.")
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
+        with reg_tab:
+            with st.form("reg_form"):
+                new_email = st.text_input("Email Address")
+                new_pass = st.text_input("Set Password", type="password")
+                reg_button = st.form_submit_button("Create Account", use_container_width=True)
+                if reg_button:
+                    try:
+                        supabase.auth.sign_up({"email": new_email, "password": new_pass})
+                        st.info("Registration request sent. Please check email or attempt login.")
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
 
 # ---------------- MAIN APP ----------------
-if not st.session_state.auth_status:
-    show_login_page()
 else:
-    # Sidebar
-    st.sidebar.markdown(f"### Access: **{st.session_state.user_role.upper()}**")
+    st.sidebar.markdown(f"### Role: **{st.session_state.user_role.upper()}**")
     st.sidebar.divider()
     
-    # Role-based menu
     nav_options = ["Framework Generator"]
     if st.session_state.user_role == "Admin":
         nav_options.append("Assessment History")
     
     page = st.sidebar.radio("Navigation", nav_options)
     
-    st.sidebar.divider()
     if st.sidebar.button("Logout Session", use_container_width=True):
         st.session_state.auth_status = False
         st.session_state.user_role = None
@@ -111,7 +111,6 @@ else:
             skills = extract_skills(jd)
             questions = generate_questions(skills, difficulty)
             
-            # UI display with Pie Chart
             st.divider()
             r1, r2 = st.columns([1, 1])
             with r1:
@@ -119,16 +118,16 @@ else:
                 st.write(f"**Candidate:** {cand_name}")
                 st.write(f"**Competencies:** {', '.join(skills) if skills else 'N/A'}")
             with r2:
-                fig = go.Figure(data=[go.Pie(
-                    labels=['Technical', 'Soft Skills'], 
-                    values=[tech_w, soft_w],
-                    hole=.4,
-                    marker_colors=['#1E3A8A', '#94A3B8']
-                )])
+                fig = go.Figure(data=[go.Pie(labels=['Technical', 'Soft Skills'], values=[tech_w, soft_w], hole=.4, marker_colors=['#1E3A8A', '#94A3B8'])])
                 fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=200)
                 st.plotly_chart(fig, use_container_width=True)
 
-            # DB update & PDF logic (remains same)
+            # Targeted Questions UI
+            st.markdown("### Targeted Questions")
+            for i, q in enumerate(questions, 1):
+                st.info(f"{i}. {q}")
+
+            # DB Save
             try:
                 supabase.table("candidate_results").insert({
                     "candidate_name": cand_name, "jd_role": f"{difficulty} Specialist",
@@ -136,6 +135,7 @@ else:
                 }).execute()
             except: pass
 
+            # PDF
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4)
             styles = getSampleStyleSheet()
