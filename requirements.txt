@@ -1,6 +1,5 @@
 streamlit
 pandas
 supabase
-python-dotenv
+plotly
 reportlab
-altair
