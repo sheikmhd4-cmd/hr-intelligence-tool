@@ -10,7 +10,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 # ---------------- CONFIG ----------------
 
-# Unga original Supabase details
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 
@@ -84,12 +83,8 @@ def generate_summary(skills, level, tech):
         f"primary emphasis on **{', '.join(skills)}**. The role appears to be "
         f"{focus}, meaning the candidate will be expected to handle real-world systems, "
         f"debug production issues, and collaborate with cross-functional teams.\n\n"
-        f"From a hiring perspective, this position is suitable for professionals who "
-        f"have already worked on deployed projects rather than purely academic exercises. "
-        f"The interview should therefore explore architectural decisions, problem-solving "
-        f"approach, communication clarity, and how the candidate handles ambiguity in live systems.\n\n"
-        f"Overall, the JD suggests a performance-driven role where impact, scalability, "
-        f"and reliability matter more than certifications alone."
+        f"The interview should explore architectural decisions, problem-solving "
+        f"approach, and how the candidate handles live systems."
     )
     return role, paragraph
 
@@ -113,7 +108,6 @@ if not st.session_state.auth_status:
                         if res and res.session:
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
-                            st.session_state.results = None
                             st.rerun()
                         else:
                             st.error("Authentication failed.")
@@ -135,16 +129,10 @@ if not st.session_state.auth_status:
 
 else:
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
-    nav = ["Framework Generator"]
-    if st.session_state.user_role == "Admin":
-        nav.append("Assessment History")
+    page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment History"])
 
-    page = st.sidebar.radio("Navigation", nav, key="nav_radio")
-
-    if st.sidebar.button("Logout Session", key="logout_btn"):
+    if st.sidebar.button("Logout Session"):
         st.session_state.auth_status = False
-        st.session_state.user_role = None
-        st.session_state.results = None
         st.rerun()
 
     if page == "Framework Generator":
@@ -186,30 +174,30 @@ else:
                 """, unsafe_allow_html=True)
 
             with r2:
-                # 1. PIE CHART (Unchanged but with better colors)
-                fig = go.Figure(data=[go.Pie(
+                # 1. PIE CHART
+                fig_pie = go.Figure(data=[go.Pie(
                     labels=["Technical", "Soft Skills"],
                     values=[res["tech"], res["soft"]],
                     hole=0.45,
                     marker=dict(colors=['#60a5fa', '#1d4ed8'])
                 )])
-                fig.update_layout(height=350, margin=dict(t=20, b=0, l=0, r=0), 
-                                 paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
-                st.plotly_chart(fig, use_container_width=True)
+                fig_pie.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), 
+                                     paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
+                st.plotly_chart(fig_pie, use_container_width=True)
 
-                # 2. INDICATOR BAR (Added to fill the empty space)
+                # 2. INDICATOR BAR (Space Filler - Fixed tickfont)
                 fig_bar = go.Figure(go.Bar(
                     x=[res["tech"], res["soft"]],
-                    y=["Technical  ", "Soft Skills  "],
+                    y=["Tech  ", "Soft  "],
                     orientation='h',
                     marker=dict(color=['#60a5fa', '#1d4ed8']),
                     text=[f"{res['tech']}%", f"{res['soft']}%"],
                     textposition='inside',
                     width=0.4
                 ))
-                fig_bar.update_layout(height=180, margin=dict(t=10, b=10, l=10, r=10),
+                fig_bar.update_layout(height=160, margin=dict(t=0, b=10, l=10, r=10),
                                      xaxis=dict(visible=False, range=[0, 100]),
-                                     yaxis=dict(showgrid=False, font=dict(color="white")),
+                                     yaxis=dict(showgrid=False, tickfont=dict(color="white")),
                                      paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                                      showlegend=False)
                 st.plotly_chart(fig_bar, use_container_width=True)
@@ -218,26 +206,15 @@ else:
             for i, q in enumerate(res["questions"], 1):
                 st.info(f"{i}. {q}")
 
-            # PDF Download Logic
+            # PDF Section
             pdf_buffer = io.BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
             styles = getSampleStyleSheet()
-            elements = [
-                Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]),
-                Spacer(1, 20),
-                Paragraph(f"<b>Candidate:</b> {res['cand'] or 'N/A'}", styles["Normal"]),
-                Paragraph(f"<b>Role:</b> {res['role']}", styles["Normal"]),
-                Paragraph(f"<b>Skills:</b> {', '.join(res['skills'])}", styles["Normal"]),
-                Spacer(1, 15),
-                Paragraph("<b>Summary:</b>", styles["Heading2"]),
-                Paragraph(res["summary"], styles["Normal"]),
-                Spacer(1, 15),
-                Paragraph("<b>Questions:</b>", styles["Heading2"]),
-            ]
+            elements = [Paragraph("ASSESSMENT REPORT", styles["Title"]), Spacer(1, 20)]
             for i, q in enumerate(res["questions"], 1):
                 elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
             doc.build(elements)
 
-            st.download_button("📥 Download Detailed Report", pdf_buffer.getvalue(), 
-                             file_name="Assessment_Report.pdf", mime="application/pdf", 
-                             use_container_width=True, key="pdf_btn")
+            st.download_button("📥 Download Report", pdf_buffer.getvalue(), 
+                             file_name="Report.pdf", mime="application/pdf", 
+                             use_container_width=True)
