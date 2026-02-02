@@ -110,7 +110,7 @@ else:
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     nav = ["Framework Generator"]
     if st.session_state.user_role == "Admin": nav.append("Assessment History")
-    page = st.sidebar.radio("Navigation", nav)
+    page = st.sidebar.radio("Navigation", nav, key="main_nav")
 
     if st.sidebar.button("Logout Session"):
         st.session_state.auth_status = False
@@ -321,7 +321,7 @@ else:
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     nav = ["Framework Generator"]
     if st.session_state.user_role == "Admin": nav.append("Assessment History")
-    page = st.sidebar.radio("Navigation", nav)
+    page = st.sidebar.radio("Navigation", nav, key="main_nav")
 
     if st.sidebar.button("Logout Session"):
         st.session_state.auth_status = False
@@ -532,7 +532,7 @@ else:
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     nav = ["Framework Generator"]
     if st.session_state.user_role == "Admin": nav.append("Assessment History")
-    page = st.sidebar.radio("Navigation", nav)
+    page = st.sidebar.radio("Navigation", nav, key="main_nav")
 
     if st.sidebar.button("Logout Session"):
         st.session_state.auth_status = False
@@ -743,7 +743,7 @@ else:
     st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
     nav = ["Framework Generator"]
     if st.session_state.user_role == "Admin": nav.append("Assessment History")
-    page = st.sidebar.radio("Navigation", nav)
+    page = st.sidebar.radio("Navigation", nav, key="main_nav")
 
     if st.sidebar.button("Logout Session"):
         st.session_state.auth_status = False
