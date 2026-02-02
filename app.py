@@ -1,70 +1,173 @@
 import streamlit as st
+import pandas as pd
+from supabase import create_client
+import io
 import plotly.graph_objects as go
+from datetime import datetime
 
-# Page Configuration
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+
+# ---------------- CONFIG ----------------
+SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
+SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 st.set_page_config(page_title="SkillSense AI", layout="wide")
 
-# Sidebar
-with st.sidebar:
-    st.title("SkillSense AI")
-    st.write("Role: **ADMIN**")
-    st.radio("Navigation", ["Framework Generator", "Assessment History"])
-    st.button("Logout")
+# ---------------- SESSION ----------------
+if "auth_status" not in st.session_state:
+    st.session_state.auth_status = False
+if "user_role" not in st.session_state:
+    st.session_state.user_role = None
+if "results" not in st.session_state:
+    st.session_state.results = None
 
-# Main Content
-st.header("Live Result Summary")
+# ---------------- CORE LOGIC ----------------
+SKILL_DB = {
+    "python": "Python", "sql": "SQL", "docker": "Docker", "kubernetes": "Kubernetes",
+    "aws": "AWS", "azure": "Azure", "react": "React", "machine learning": "Machine Learning",
+    "data analysis": "Data Analysis", "devops": "DevOps", "ci/cd": "CI/CD",
+    "terraform": "Terraform", "linux": "Linux", "java": "Java",
+    "javascript": "JavaScript", "api": "API Development",
+}
 
-col1, col2 = st.columns([1, 1])
+def extract_skills(text):
+    text = text.lower()
+    found = [v for k, v in SKILL_DB.items() if k in text]
+    return list(set(found)) if found else ["General Technical"]
 
-with col1:
-    # Summary Card
-    st.markdown("""
-    <div style="background-color: #1e2630; padding: 20px; border-radius: 10px;">
-        <h3>Candidate: john</h3>
-        <h4>Role: Software Engineer</h4>
-        <p>Targeting a <b>Junior-level Software Engineer</b> profile focusing on <b>General Technical</b>. 
-        Expected match: <b>70%</b>.</p>
-    </div>
-    """, unsafe_allow_all_with_html=True)
+def generate_questions(skills, level):
+    qs = []
+    for s in skills:
+        qs.extend([f"Explain fundamentals of {s}.", f"Describe a project using {s}.", f"How do you debug {s} systems?"])
+    while len(qs) < 10: qs.append("Explain a complex technical challenge you solved.")
+    return qs[:12]
+
+def generate_summary(skills, level, tech):
+    if "Machine Learning" in skills: role = "Data Scientist / ML Engineer"
+    elif "DevOps" in skills: role = "Cloud / DevOps Engineer"
+    elif "React" in skills: role = "Frontend Engineer"
+    else: role = "Software Engineer"
     
-    st.subheader("Detected Skills:")
-    st.write("General Technical")
-    
-    st.subheader("Suggested Role:")
-    st.write("Software Engineer")
+    paragraph = f"This job description clearly targets a **{level}-level {role}** profile with primary emphasis on **{', '.join(skills)}**. The role appears to be strongly technical, meaning the candidate will be expected to handle real-world systems, debug production issues, and collaborate with cross-functional teams."
+    return role, paragraph
 
-with col2:
-    # Donut Chart for Technical vs Soft Skills
-    fig = go.Figure(data=[go.Pie(labels=['Technical', 'Soft Skills'], 
-                             values=[70, 30], 
-                             hole=.6,
-                             marker_colors=['#63b3ed', '#2b6cb0'])])
-    fig.update_layout(showlegend=True, margin=dict(t=0, b=0, l=0, r=0))
-    st.plotly_chart(fig, use_container_width=True)
+# ---------------- AUTH UI ----------------
+if not st.session_state.auth_status:
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        st.markdown("<h1 style='text-align:center;'>SkillSense AI</h1>", unsafe_allow_html=True)
+        login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
+        with login_tab:
+            with st.form("login_form"):
+                email = st.text_input("Email")
+                password = st.text_input("Password", type="password")
+                role_choice = st.selectbox("Login as", ["Admin", "User"])
+                if st.form_submit_button("Authenticate", use_container_width=True):
+                    try:
+                        res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                        if res and res.session:
+                            st.session_state.auth_status, st.session_state.user_role = True, role_choice
+                            st.rerun()
+                        else: st.error("Failed.")
+                    except: st.error("Error.")
+        with reg_tab:
+            with st.form("reg_form"):
+                n_email, n_pass = st.text_input("Email Address"), st.text_input("Password")
+                if st.form_submit_button("Create Account"):
+                    try: supabase.auth.sign_up({"email": n_email, "password": n_pass}); st.info("Success.")
+                    except Exception as e: st.error(str(e))
 
-    # Metrics Progress Bars
-    st.write(f"Culture Fit: 80%")
-    st.progress(0.80)
-    st.write(f"Tech Score: 70%")
-    st.progress(0.70)
-    st.write(f"Domain Fit: 85%")
-    st.progress(0.85)
+# ---------------- MAIN APP ----------------
+else:
+    st.sidebar.markdown(f"### SkillSense AI\n**Role: {st.session_state.user_role.upper()}**")
+    nav = ["Framework Generator"]
+    if st.session_state.user_role == "Admin": nav.append("Assessment History")
+    page = st.sidebar.radio("Navigation", nav)
 
-st.divider()
+    if st.sidebar.button("Logout"):
+        st.session_state.auth_status = False
+        st.rerun()
 
-# Targeted Interview Questions Section (இதுதான் உங்களுக்கு மிஸ் ஆனது)
-st.subheader("Targeted Interview Questions")
+    if page == "Framework Generator":
+        st.header("Evaluation Framework")
+        c1, c2 = st.columns([1.5, 1])
+        with c1: jd = st.text_area("Input Job Description", height=260)
+        with c2:
+            cand = st.text_input("Candidate Name")
+            level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
+            tech = st.slider("Tech Weight (%)", 0, 100, 70)
+            soft = 100 - tech
 
-questions = [
-    "**Technical:** Explain how you have handled debugging in a production environment with real-world systems?",
-    "**System Design:** Given our focus on General Technical skills, how would you approach a bottleneck in a high-traffic system?",
-    "**Culture/Domain:** With an 85% domain fit, how do you keep up with the latest trends in this specific industry?",
-    "**Collaboration:** Describe a time you had to simplify a technical problem for a non-technical team member."
-]
+        if st.button("Process Assessment", use_container_width=True) and jd:
+            skills = extract_skills(jd)
+            role, summary_para = generate_summary(skills, level, tech)
+            questions = generate_questions(skills, level)
+            st.session_state.results = {"cand": cand, "skills": skills, "role": role, "summary": summary_para, "questions": questions, "tech": tech, "soft": soft}
+            
+            # --- SAVE TO 'admins' TABLE AS DETECTED ---
+            try:
+                supabase.table("admins").insert({
+                    "candidate_name": cand, "role": role, "tech_score": tech, "created_at": datetime.now().isoformat()
+                }).execute()
+            except: pass 
 
-for q in questions:
-    st.info(q)
+        if st.session_state.results:
+            res = st.session_state.results
+            st.divider()
+            
+            # --- FIRST ROW: SUMMARY & PIE ---
+            r1, r2 = st.columns([1, 1])
+            with r1:
+                st.subheader("Live Result Summary")
+                st.markdown(f"""
+                <div style="background-color:#0f172a;padding:25px;border-radius:12px;color:white;border-left:5px solid #60a5fa;">
+                <h4>Candidate: {res['cand'] or 'N/A'}</h4>
+                <b>Detected Skills:</b> {', '.join(res['skills'])}<br>
+                <b>Suggested Role:</b> {res['role']}<br><br>
+                <p style="line-height:1.6;">{res['summary']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with r2:
+                fig_pie = go.Figure(data=[go.Pie(labels=["Technical", "Soft Skills"], values=[res["tech"], res["soft"]], hole=0.45, marker=dict(colors=['#60a5fa', '#1d4ed8']))])
+                fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"), showlegend=True, legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+                metrics_data = {"Culture Fit": 80, "Soft Skills": res["soft"], "Tech Score": res["tech"], "Domain Fit": 85}
+                fig_metrics = go.Figure(go.Bar(x=list(metrics_data.values()), y=list(metrics_data.keys()), orientation='h', marker=dict(color=['#1d4ed8', '#60a5fa', '#1d4ed8', '#60a5fa']), text=[f"{v}%" for v in metrics_data.values()], textposition='auto'))
+                fig_metrics.update_layout(height=220, margin=dict(t=20, b=10, l=10, r=10), xaxis=dict(visible=False, range=[0, 100]), yaxis=dict(showgrid=False, tickfont=dict(color="white")), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_metrics, use_container_width=True)
 
-# Overall Match Score Footer
-st.markdown("<h2 style='text-align: center;'>OVERALL MATCH SCORE</h2>", unsafe_allow_all_with_html=True)
-st.markdown("<h1 style='text-align: center; color: #63b3ed;'>70%</h1>", unsafe_allow_all_with_html=True)
+            # --- OVERALL SCORE BOX ---
+            st.markdown(f"""
+            <div style="border: 1px solid #1d4ed8; padding: 20px; border-radius: 10px; text-align: center; background: rgba(29, 78, 216, 0.1); margin-bottom: 30px;">
+                <span style="color: #60a5fa; font-size: 1rem; font-weight: bold;">OVERALL MATCH SCORE</span><br>
+                <span style="color: white; font-size: 2.5rem; font-weight: bold;">{res['tech']}%</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # --- QUESTIONS SECTION ---
+            st.subheader("Targeted Interview Questions")
+            for i, q in enumerate(res["questions"], 1):
+                st.info(f"{i}. {q}")
+
+            # --- PDF DOWNLOAD ---
+            pdf_buffer = io.BytesIO()
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+            styles = getSampleStyleSheet()
+            elements = [Paragraph(f"SkillSense AI Report: {res['cand']}", styles["Title"]), Spacer(1, 15)]
+            for i, q in enumerate(res["questions"], 1): elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
+            doc.build(elements)
+            st.download_button("📥 Export Analysis PDF", pdf_buffer.getvalue(), "SkillSense_Report.pdf", use_container_width=True)
+
+    elif page == "Assessment History":
+        st.header("Real-Time Assessment History")
+        try:
+            db_res = supabase.table("admins").select("*").order("created_at", desc=True).execute()
+            if db_res.data:
+                df = pd.DataFrame(db_res.data)
+                st.dataframe(df, use_container_width=True)
+            else: st.warning("No records found in table 'admins'.")
+        except Exception as e: st.error(f"DB Error: {e}")
