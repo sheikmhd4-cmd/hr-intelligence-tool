@@ -74,7 +74,6 @@ def generate_questions(skills, level):
 
 
 def generate_summary(skills, level, tech):
-    role = "Software Engineer"
 
     if "Machine Learning" in skills:
         role = "Data Scientist / ML Engineer"
@@ -82,11 +81,27 @@ def generate_summary(skills, level, tech):
         role = "Cloud / DevOps Engineer"
     elif "React" in skills:
         role = "Frontend Engineer"
+    else:
+        role = "Software Engineer"
 
-    focus = "Technical Heavy" if tech >= 65 else "Balanced"
-    insight = f"JD focuses on {', '.join(skills)}. Ideal for a {level} role."
+    focus = "strongly technical" if tech >= 65 else "balanced between technical and soft skills"
 
-    return role, focus, insight
+    paragraph = (
+        f"This job description clearly targets a **{level}-level {role}** profile with "
+        f"primary emphasis on **{', '.join(skills)}**. The role appears to be "
+        f"{focus}, meaning the candidate will be expected to handle real-world systems, "
+        f"debug production issues, and collaborate with cross-functional teams.\n\n"
+        f"From a hiring perspective, this position is suitable for professionals who "
+        f"have already worked on deployed projects rather than purely academic exercises. "
+        f"The interview should therefore explore architectural decisions, problem-solving "
+        f"approach, communication clarity, and how the candidate handles ambiguity in live systems.\n\n"
+        f"Overall, the JD suggests a performance-driven role where impact, scalability, "
+        f"and reliability matter more than certifications alone. Candidates who can "
+        f"demonstrate ownership, learning mindset, and delivery under pressure will be "
+        f"strong matches for this opportunity."
+    )
+
+    return role, paragraph
 
 
 # ---------------- AUTH UI ----------------
@@ -104,8 +119,6 @@ if not st.session_state.auth_status:
 
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
 
-        # ---------- LOGIN ----------
-
         with login_tab:
 
             with st.form("login_form"):
@@ -114,9 +127,7 @@ if not st.session_state.auth_status:
                 password = st.text_input("Password", type="password")
                 role_choice = st.selectbox("Login as", ["Admin", "User"])
 
-                submit = st.form_submit_button(
-                    "Authenticate", use_container_width=True
-                )
+                submit = st.form_submit_button("Authenticate", use_container_width=True)
 
                 if submit:
 
@@ -126,53 +137,32 @@ if not st.session_state.auth_status:
                             {"email": email, "password": password}
                         )
 
-                        user = None
-
                         if res and res.session:
-                            user = res.session.user
-
-                        if user:
 
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
                             st.session_state.results = None
-
                             st.rerun()
 
                         else:
-                            st.error(
-                                "Authentication failed. Please check credentials."
-                            )
+                            st.error("Authentication failed.")
 
-                    except Exception as e:
-
+                    except:
                         st.error("Authentication failed.")
-
-        # ---------- REGISTER ----------
 
         with reg_tab:
 
             with st.form("reg_form"):
 
                 new_email = st.text_input("Email Address")
-                new_pass = st.text_input("Password", type="password")
+                new_pass = st.text_input("Password")
 
-                if st.form_submit_button(
-                    "Create Account", use_container_width=True
-                ):
+                if st.form_submit_button("Create Account", use_container_width=True):
 
                     try:
-
-                        supabase.auth.sign_up(
-                            {"email": new_email, "password": new_pass}
-                        )
-
-                        st.info(
-                            "Registration successful. You can now login."
-                        )
-
+                        supabase.auth.sign_up({"email": new_email, "password": new_pass})
+                        st.info("Registration successful.")
                     except Exception as e:
-
                         st.error(str(e))
 
 
@@ -180,30 +170,21 @@ if not st.session_state.auth_status:
 
 else:
 
-    st.sidebar.markdown(
-        f"### Role: {st.session_state.user_role.upper()}"
-    )
+    st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
 
     nav = ["Framework Generator"]
 
     if st.session_state.user_role == "Admin":
         nav.append("Assessment History")
 
-    page = st.sidebar.radio(
-        "Navigation",
-        nav,
-        key="nav_radio_main",
-    )
+    page = st.sidebar.radio("Navigation", nav, key="nav_radio")
 
     if st.sidebar.button("Logout Session", key="logout_btn"):
 
         st.session_state.auth_status = False
-        st.session_state.results = None
         st.session_state.user_role = None
-
+        st.session_state.results = None
         st.rerun()
-
-    # ---------- FRAMEWORK ----------
 
     if page == "Framework Generator":
 
@@ -216,39 +197,22 @@ else:
 
         with c2:
 
-            cand = st.text_input("Candidate Name", value="")
-
-            level = st.select_slider(
-                "Level", ["Junior", "Mid", "Senior"]
-            )
-
-            tech = st.slider(
-                "Technical Weight (%)", 0, 100, 70
-            )
-
+            cand = st.text_input("Candidate Name")
+            level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
+            tech = st.slider("Technical Weight (%)", 0, 100, 70)
             soft = 100 - tech
 
-        if (
-            st.button("Process Assessment", use_container_width=True)
-            and jd
-        ):
+        if st.button("Process Assessment", use_container_width=True) and jd:
 
-            found_skills = extract_skills(jd)
-
-            role, focus, insight = generate_summary(
-                found_skills, level, tech
-            )
-
-            questions = generate_questions(
-                found_skills, level
-            )
+            skills = extract_skills(jd)
+            role, summary_para = generate_summary(skills, level, tech)
+            questions = generate_questions(skills, level)
 
             st.session_state.results = {
                 "cand": cand,
-                "skills": found_skills,
+                "skills": skills,
                 "role": role,
-                "focus": focus,
-                "insight": insight,
+                "summary": summary_para,
                 "questions": questions,
                 "tech": tech,
                 "soft": soft,
@@ -266,17 +230,17 @@ else:
 
                 st.subheader("Live Result Summary")
 
-                st.write(
-                    f"**Candidate:** {res['cand'] if res['cand'] else 'N/A'}"
+                st.markdown(
+                    f"""
+<div style="background-color:#0f172a;padding:18px;border-radius:12px;color:white;">
+<h4>Candidate:</h4> {res['cand'] or 'N/A'}<br><br>
+<h4>Detected Skills:</h4> {', '.join(res['skills'])}<br><br>
+<h4>Suggested Role:</h4> {res['role']}<br><br>
+<p>{res['summary']}</p>
+</div>
+""",
+                    unsafe_allow_html=True,
                 )
-
-                st.write(
-                    f"**Detected Skills:** {', '.join(res['skills'])}"
-                )
-
-                st.write(f"**Suggested Role:** {res['role']}")
-
-                st.info(res["insight"])
 
             with r2:
 
@@ -290,11 +254,7 @@ else:
                     ]
                 )
 
-                fig.update_layout(
-                    height=350,
-                    margin=dict(t=0, b=0, l=0, r=0),
-                )
-
+                fig.update_layout(height=350)
                 st.plotly_chart(fig, use_container_width=True)
 
             st.markdown("### Targeted Interview Questions")
@@ -302,81 +262,36 @@ else:
             for i, q in enumerate(res["questions"], 1):
                 st.info(f"{i}. {q}")
 
-            # ---------- PDF ----------
+            # -------- PDF --------
 
             pdf_buffer = io.BytesIO()
 
-            doc = SimpleDocTemplate(
-                pdf_buffer, pagesize=A4
-            )
-
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
             styles = getSampleStyleSheet()
 
             elements = [
-                Paragraph(
-                    "INTERVIEW ASSESSMENT REPORT",
-                    styles["Title"],
-                ),
+                Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]),
                 Spacer(1, 20),
-                Paragraph(
-                    f"<b>Candidate Name:</b> {res['cand'] if res['cand'] else 'N/A'}",
-                    styles["Normal"],
-                ),
-                Paragraph(
-                    f"<b>Role:</b> {res['role']}",
-                    styles["Normal"],
-                ),
-                Paragraph(
-                    f"<b>Skills:</b> {', '.join(res['skills'])}",
-                    styles["Normal"],
-                ),
-                Spacer(1, 20),
-                Paragraph(
-                    "<b>Interview Questions:</b>",
-                    styles["Heading2"],
-                ),
-                Spacer(1, 10),
+                Paragraph(f"<b>Candidate:</b> {res['cand'] or 'N/A'}", styles["Normal"]),
+                Paragraph(f"<b>Role:</b> {res['role']}", styles["Normal"]),
+                Paragraph(f"<b>Skills:</b> {', '.join(res['skills'])}", styles["Normal"]),
+                Spacer(1, 15),
+                Paragraph("<b>Summary:</b>", styles["Heading2"]),
+                Paragraph(res["summary"], styles["Normal"]),
+                Spacer(1, 15),
+                Paragraph("<b>Questions:</b>", styles["Heading2"]),
             ]
 
             for i, q in enumerate(res["questions"], 1):
-                elements.append(
-                    Paragraph(f"{i}. {q}", styles["Normal"])
-                )
+                elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
 
             doc.build(elements)
 
             st.download_button(
-                label="📥 Download Detailed Report",
-                data=pdf_buffer.getvalue(),
-                file_name=(
-                    f"Assessment_{res['cand']}.pdf"
-                    if res["cand"]
-                    else "Report.pdf"
-                ),
+                "📥 Download Detailed Report",
+                pdf_buffer.getvalue(),
+                file_name="Assessment_Report.pdf",
                 mime="application/pdf",
                 use_container_width=True,
-                key="pdf_download_btn",
+                key="pdf_btn",
             )
-
-    # ---------- HISTORY ----------
-
-    elif page == "Assessment History":
-
-        st.header("Enterprise Audit Logs")
-
-        try:
-
-            res_db = (
-                supabase.table("candidate_results")
-                .select("*")
-                .execute()
-            )
-
-            st.dataframe(
-                pd.DataFrame(res_db.data),
-                use_container_width=True,
-            )
-
-        except:
-
-            st.error("Database connection error.")
