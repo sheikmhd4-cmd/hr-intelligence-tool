@@ -107,12 +107,13 @@ else:
             questions = generate_questions(skills, level)
             st.session_state.results = {"cand": cand, "skills": skills, "role": role, "summary": summary_para, "questions": questions, "tech": tech, "soft": soft}
             
-            # --- REAL DB SAVE ---
+            # --- REAL DB SAVE (with error check) ---
             try:
                 supabase.table("assessments").insert({
                     "candidate_name": cand, "role": role, "tech_score": tech, "soft_score": soft, "created_at": datetime.now().isoformat()
                 }).execute()
-            except: pass 
+            except Exception as e:
+                st.warning(f"Note: Result not saved to DB (Table 'assessments' not found).")
 
         if st.session_state.results:
             res = st.session_state.results
@@ -131,7 +132,7 @@ else:
                 fig_metrics.update_layout(height=200, margin=dict(t=20, b=10, l=10, r=10), xaxis=dict(visible=False), yaxis=dict(showgrid=False, tickfont=dict(color="white")), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_metrics, use_container_width=True)
 
-            # --- PDF DOWNLOAD (RESTORED) ---
+            # --- PDF DOWNLOAD IS HERE ---
             pdf_buffer = io.BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
             styles = getSampleStyleSheet()
@@ -143,9 +144,11 @@ else:
     elif page == "Assessment History":
         st.header("Real-Time Assessment History")
         try:
+            # Check if assessments table exists
             db_res = supabase.table("assessments").select("*").order("created_at", desc=True).execute()
             if db_res.data:
                 df = pd.DataFrame(db_res.data)
                 st.dataframe(df, use_container_width=True)
-            else: st.warning("No records found in database.")
-        except Exception as e: st.error(f"Database Error: {e}")
+            else: st.warning("No records found.")
+        except Exception as e:
+            st.error(f"Database Error: Could not find table 'assessments'. Please create it in Supabase.")
