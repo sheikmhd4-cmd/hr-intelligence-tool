@@ -294,9 +294,7 @@ margin-top:-15px;
 """,
     unsafe_allow_html=True,
 )
-
-
-            st.markdown("### Targeted Interview Questions")
+ st.markdown("### Targeted Interview Questions")
 
             for i, q in enumerate(res["questions"], 1):
                 st.info(f"{i}. {q}")
