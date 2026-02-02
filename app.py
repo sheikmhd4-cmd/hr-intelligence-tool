@@ -1,167 +1,382 @@
 import streamlit as st
-from fpdf import FPDF
+import pandas as pd
 from supabase import create_client
-import hashlib
-import os
 import io
-from openai import OpenAI
+import plotly.graph_objects as go
 
-# ---------------- CONFIG & SECRETS ----------------
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
 
-st.set_page_config(page_title="HR Intelligence Tool", layout="wide")
+# ---------------- CONFIG ----------------
 
-# Safe ah keys edukarom
-try:
-    S_URL = st.secrets["SUPABASE_URL"]
-    S_KEY = st.secrets["SUPABASE_KEY"]
-    O_KEY = st.secrets["OPENAI_API_KEY"]
-except Exception:
-    st.error("❌ Secrets Missing! Streamlit Cloud Settings -> Secrets la keys update pannunga.")
-    st.stop()
+SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
+SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 
-client = OpenAI(api_key=O_KEY)
-supabase = create_client(S_URL, S_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ---------------- SESSION INIT ----------------
+st.set_page_config(page_title="HR Intel Portal", layout="wide")
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "analysis_result" not in st.session_state:
-    st.session_state.analysis_result = ""
-if "user_email" not in st.session_state:
-    st.session_state.user_email = ""
+# ---------------- SESSION ----------------
 
-# ---------------- UTILS ----------------
+if "auth_status" not in st.session_state:
+    st.session_state.auth_status = False
 
-def hash_password(pwd: str) -> str:
-    return hashlib.sha256(pwd.encode()).hexdigest()
+if "user_role" not in st.session_state:
+    st.session_state.user_role = None
 
-def create_pdf(text):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Arial", size=11)
-    
-    # Encoding fix for special characters
-    clean_text = text.encode('latin-1', 'replace').decode('latin-1')
-    
-    for block in clean_text.split("\n"):
-        pdf.multi_cell(0, 8, block)
-    
-    return pdf.output(dest='S').encode('latin-1')
+if "results" not in st.session_state:
+    st.session_state.results = None
 
-# ---------------- AI ENGINE ----------------
+# ---------------- CORE LOGIC ----------------
 
-def analyze_resume(resume_text, jd_text):
-    prompt = f"""
-    You are a senior corporate HR partner. Evaluate the candidate in depth.
-    Resume: {resume_text}
-    JD: {jd_text}
-    
-    Sections:
-    ### Insightful Analysis
-    ### Identified Competencies
-    ### Structured Interview Questions
-    ### Hiring Recommendation
-    """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+SKILL_DB = {
+    "python": "Python",
+    "sql": "SQL",
+    "docker": "Docker",
+    "kubernetes": "Kubernetes",
+    "aws": "AWS",
+    "azure": "Azure",
+    "react": "React",
+    "machine learning": "Machine Learning",
+    "data analysis": "Data Analysis",
+    "devops": "DevOps",
+    "ci/cd": "CI/CD",
+    "terraform": "Terraform",
+    "linux": "Linux",
+    "java": "Java",
+    "javascript": "JavaScript",
+    "api": "API Development",
+}
+
+
+def extract_skills(text):
+    text = text.lower()
+    found = [v for k, v in SKILL_DB.items() if k in text]
+    return list(set(found)) if found else ["General Technical"]
+
+
+def generate_questions(skills, level):
+    qs = []
+    for s in skills:
+        qs.extend(
+            [
+                f"Explain fundamentals of {s}.",
+                f"Describe a production project using {s}.",
+                f"How do you debug failures in {s} systems?",
+            ]
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"AI Error: {str(e)}"
 
-# ---------------- UI: LOGIN & REGISTER ----------------
+    while len(qs) < 10:
+        qs.append("Explain a complex technical challenge you solved recently.")
 
-def auth_page():
-    st.title("HR Intelligence Platform")
-    
-    # Old UI: Tabs for Login/Register
-    tab1, tab2 = st.tabs(["Secure Login", "New Registration"])
-    
-    with tab1:
-        email = st.text_input("Corporate Email", key="login_email")
-        pwd = st.text_input("Password", type="password", key="login_pwd")
-        
-        if st.button("Authenticate & Enter", use_container_width=True):
-            hashed = hash_password(pwd)
-            try:
-                res = supabase.table("users").select("*").eq("email", email).eq("password", hashed).execute()
-                if res.data:
-                    st.session_state.logged_in = True
-                    st.session_state.user_email = email
-                    st.rerun()
-                else:
-                    st.error("Invalid Email or Password")
-            except Exception as e:
-                st.error("Database connection issue. 'users' table irukanu check pannunga.")
+    return qs[:12]
 
-    with tab2:
-        new_email = st.text_input("New Email", key="reg_email")
-        new_pwd = st.text_input("New Password", type="password", key="reg_pwd")
-        
-        if st.button("Create Account", use_container_width=True):
-            if not new_email or not new_pwd:
-                st.warning("Please provide both email and password.")
-            else:
-                hashed_pwd = hash_password(new_pwd)
-                try:
-                    supabase.table("users").insert({
-                        "email": new_email,
-                        "password": hashed_pwd
-                    }).execute()
-                    st.success("✅ Account created successfully! Go to Login tab.")
-                except Exception as e:
-                    st.error("Registration failed. Table 'users' created-ah? (OR) Email already exists.")
-                    st.info("Check: Supabase -> Table Editor -> users (columns: email, password)")
 
-# ---------------- UI: MAIN DASHBOARD ----------------
+def generate_summary(skills, level, tech):
+    role = "Software Engineer"
 
-def main_app():
-    st.sidebar.title(f"User: {st.session_state.user_email.split('@')[0]}")
-    page = st.sidebar.radio("Navigation", ["Resume Analyzer", "Logout"])
+    if "Machine Learning" in skills:
+        role = "Data Scientist / ML Engineer"
+    elif "DevOps" in skills:
+        role = "Cloud / DevOps Engineer"
+    elif "React" in skills:
+        role = "Frontend Engineer"
 
-    if page == "Logout":
-        st.session_state.logged_in = False
-        st.session_state.analysis_result = ""
+    focus = "Technical Heavy" if tech >= 65 else "Balanced"
+    insight = f"JD focuses on {', '.join(skills)}. Ideal for a {level} role."
+
+    return role, focus, insight
+
+
+# ---------------- AUTH UI ----------------
+
+if not st.session_state.auth_status:
+
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+
+    with col2:
+
+        st.markdown(
+            "<h1 style='text-align:center;'>HR Intelligence Portal</h1>",
+            unsafe_allow_html=True,
+        )
+
+        login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
+
+        # ---------- LOGIN ----------
+
+        with login_tab:
+
+            with st.form("login_form"):
+
+                email = st.text_input("Corporate Email")
+                password = st.text_input("Password", type="password")
+                role_choice = st.selectbox("Login as", ["Admin", "User"])
+
+                submit = st.form_submit_button(
+                    "Authenticate", use_container_width=True
+                )
+
+                if submit:
+
+                    try:
+
+                        res = supabase.auth.sign_in_with_password(
+                            {"email": email, "password": password}
+                        )
+
+                        user = None
+
+                        if res and res.session:
+                            user = res.session.user
+
+                        if user:
+
+                            st.session_state.auth_status = True
+                            st.session_state.user_role = role_choice
+                            st.session_state.results = None
+
+                            st.rerun()
+
+                        else:
+                            st.error(
+                                "Authentication failed. Please check credentials."
+                            )
+
+                    except Exception as e:
+
+                        st.error("Authentication failed.")
+
+        # ---------- REGISTER ----------
+
+        with reg_tab:
+
+            with st.form("reg_form"):
+
+                new_email = st.text_input("Email Address")
+                new_pass = st.text_input("Password", type="password")
+
+                if st.form_submit_button(
+                    "Create Account", use_container_width=True
+                ):
+
+                    try:
+
+                        supabase.auth.sign_up(
+                            {"email": new_email, "password": new_pass}
+                        )
+
+                        st.info(
+                            "Registration successful. You can now login."
+                        )
+
+                    except Exception as e:
+
+                        st.error(str(e))
+
+
+# ---------------- MAIN APP ----------------
+
+else:
+
+    st.sidebar.markdown(
+        f"### Role: {st.session_state.user_role.upper()}"
+    )
+
+    nav = ["Framework Generator"]
+
+    if st.session_state.user_role == "Admin":
+        nav.append("Assessment History")
+
+    page = st.sidebar.radio(
+        "Navigation",
+        nav,
+        key="nav_radio_main",
+    )
+
+    if st.sidebar.button("Logout Session", key="logout_btn"):
+
+        st.session_state.auth_status = False
+        st.session_state.results = None
+        st.session_state.user_role = None
+
         st.rerun()
 
-    if page == "Resume Analyzer":
-        st.header("Candidate Evaluation Framework")
-        
-        c1, c2 = st.columns(2)
+    # ---------- FRAMEWORK ----------
+
+    if page == "Framework Generator":
+
+        st.header("Evaluation Framework")
+
+        c1, c2 = st.columns([1.5, 1])
+
         with c1:
-            res_txt = st.text_area("Paste Resume", height=250, placeholder="Full text of candidate resume...")
+            jd = st.text_area("Input Job Description", height=260)
+
         with c2:
-            jd_txt = st.text_area("Paste JD", height=250, placeholder="Full job description...")
 
-        if st.button("Run Intelligence Analysis", use_container_width=True):
-            if res_txt and jd_txt:
-                with st.spinner("Analyzing candidate profile..."):
-                    result = analyze_resume(res_txt, jd_txt)
-                    st.session_state.analysis_result = result
-            else:
-                st.warning("Paste both Resume and JD to proceed.")
+            cand = st.text_input("Candidate Name", value="")
 
-        if st.session_state.analysis_result:
-            st.divider()
-            st.markdown(st.session_state.analysis_result)
-            
-            pdf_bytes = create_pdf(st.session_state.analysis_result)
-            st.download_button(
-                label="📥 Download Professional Assessment Report",
-                data=pdf_bytes,
-                file_name=f"Assessment_Report.pdf",
-                mime="application/pdf",
-                use_container_width=True
+            level = st.select_slider(
+                "Level", ["Junior", "Mid", "Senior"]
             )
 
-# ---------------- ROUTER ----------------
+            tech = st.slider(
+                "Technical Weight (%)", 0, 100, 70
+            )
 
-if st.session_state.logged_in:
-    main_app()
-else:
-    auth_page()
+            soft = 100 - tech
+
+        if (
+            st.button("Process Assessment", use_container_width=True)
+            and jd
+        ):
+
+            found_skills = extract_skills(jd)
+
+            role, focus, insight = generate_summary(
+                found_skills, level, tech
+            )
+
+            questions = generate_questions(
+                found_skills, level
+            )
+
+            st.session_state.results = {
+                "cand": cand,
+                "skills": found_skills,
+                "role": role,
+                "focus": focus,
+                "insight": insight,
+                "questions": questions,
+                "tech": tech,
+                "soft": soft,
+            }
+
+        if st.session_state.results:
+
+            res = st.session_state.results
+
+            st.divider()
+
+            r1, r2 = st.columns([1, 1])
+
+            with r1:
+
+                st.subheader("Live Result Summary")
+
+                st.write(
+                    f"**Candidate:** {res['cand'] if res['cand'] else 'N/A'}"
+                )
+
+                st.write(
+                    f"**Detected Skills:** {', '.join(res['skills'])}"
+                )
+
+                st.write(f"**Suggested Role:** {res['role']}")
+
+                st.info(res["insight"])
+
+            with r2:
+
+                fig = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=["Technical", "Soft Skills"],
+                            values=[res["tech"], res["soft"]],
+                            hole=0.45,
+                        )
+                    ]
+                )
+
+                fig.update_layout(
+                    height=350,
+                    margin=dict(t=0, b=0, l=0, r=0),
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("### Targeted Interview Questions")
+
+            for i, q in enumerate(res["questions"], 1):
+                st.info(f"{i}. {q}")
+
+            # ---------- PDF ----------
+
+            pdf_buffer = io.BytesIO()
+
+            doc = SimpleDocTemplate(
+                pdf_buffer, pagesize=A4
+            )
+
+            styles = getSampleStyleSheet()
+
+            elements = [
+                Paragraph(
+                    "INTERVIEW ASSESSMENT REPORT",
+                    styles["Title"],
+                ),
+                Spacer(1, 20),
+                Paragraph(
+                    f"<b>Candidate Name:</b> {res['cand'] if res['cand'] else 'N/A'}",
+                    styles["Normal"],
+                ),
+                Paragraph(
+                    f"<b>Role:</b> {res['role']}",
+                    styles["Normal"],
+                ),
+                Paragraph(
+                    f"<b>Skills:</b> {', '.join(res['skills'])}",
+                    styles["Normal"],
+                ),
+                Spacer(1, 20),
+                Paragraph(
+                    "<b>Interview Questions:</b>",
+                    styles["Heading2"],
+                ),
+                Spacer(1, 10),
+            ]
+
+            for i, q in enumerate(res["questions"], 1):
+                elements.append(
+                    Paragraph(f"{i}. {q}", styles["Normal"])
+                )
+
+            doc.build(elements)
+
+            st.download_button(
+                label="📥 Download Detailed Report",
+                data=pdf_buffer.getvalue(),
+                file_name=(
+                    f"Assessment_{res['cand']}.pdf"
+                    if res["cand"]
+                    else "Report.pdf"
+                ),
+                mime="application/pdf",
+                use_container_width=True,
+                key="pdf_download_btn",
+            )
+
+    # ---------- HISTORY ----------
+
+    elif page == "Assessment History":
+
+        st.header("Enterprise Audit Logs")
+
+        try:
+
+            res_db = (
+                supabase.table("candidate_results")
+                .select("*")
+                .execute()
+            )
+
+            st.dataframe(
+                pd.DataFrame(res_db.data),
+                use_container_width=True,
+            )
+
+        except:
+
+            st.error("Database connection error.")
