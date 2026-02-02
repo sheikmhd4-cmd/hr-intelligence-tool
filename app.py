@@ -15,7 +15,6 @@ SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# UPDATED NAME HERE
 st.set_page_config(page_title="SkillSense AI", layout="wide")
 
 # ---------------- SESSION ----------------
@@ -32,22 +31,11 @@ if "results" not in st.session_state:
 # ---------------- CORE LOGIC ----------------
 
 SKILL_DB = {
-    "python": "Python",
-    "sql": "SQL",
-    "docker": "Docker",
-    "kubernetes": "Kubernetes",
-    "aws": "AWS",
-    "azure": "Azure",
-    "react": "React",
-    "machine learning": "Machine Learning",
-    "data analysis": "Data Analysis",
-    "devops": "DevOps",
-    "ci/cd": "CI/CD",
-    "terraform": "Terraform",
-    "linux": "Linux",
-    "java": "Java",
-    "javascript": "JavaScript",
-    "api": "API Development",
+    "python": "Python", "sql": "SQL", "docker": "Docker", "kubernetes": "Kubernetes",
+    "aws": "AWS", "azure": "Azure", "react": "React", "machine learning": "Machine Learning",
+    "data analysis": "Data Analysis", "devops": "DevOps", "ci/cd": "CI/CD",
+    "terraform": "Terraform", "linux": "Linux", "java": "Java",
+    "javascript": "JavaScript", "api": "API Development",
 }
 
 def extract_skills(text):
@@ -68,22 +56,17 @@ def generate_questions(skills, level):
     return qs[:12]
 
 def generate_summary(skills, level, tech):
-    if "Machine Learning" in skills:
-        role = "Data Scientist / ML Engineer"
-    elif "DevOps" in skills:
-        role = "Cloud / DevOps Engineer"
-    elif "React" in skills:
-        role = "Frontend Engineer"
-    else:
-        role = "Software Engineer"
+    if "Machine Learning" in skills: role = "Data Scientist / ML Engineer"
+    elif "DevOps" in skills: role = "Cloud / DevOps Engineer"
+    elif "React" in skills: role = "Frontend Engineer"
+    else: role = "Software Engineer"
 
     focus = "strongly technical" if tech >= 65 else "balanced between technical and soft skills"
 
     paragraph = (
         f"This job description clearly targets a **{level}-level {role}** profile with "
         f"primary emphasis on **{', '.join(skills)}**. The role appears to be "
-        f"{focus}, meaning the candidate will be expected to handle real-world systems, "
-        f"debug production issues, and collaborate with cross-functional teams."
+        f"{focus}."
     )
     return role, paragraph
 
@@ -92,7 +75,6 @@ def generate_summary(skills, level, tech):
 if not st.session_state.auth_status:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        # UPDATED NAME HERE
         st.markdown("<h1 style='text-align:center;'>SkillSense AI Portal</h1>", unsafe_allow_html=True)
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
 
@@ -109,10 +91,8 @@ if not st.session_state.auth_status:
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
                             st.rerun()
-                        else:
-                            st.error("Authentication failed.")
-                    except:
-                        st.error("Authentication failed.")
+                        else: st.error("Authentication failed.")
+                    except: st.error("Authentication failed.")
 
         with reg_tab:
             with st.form("reg_form"):
@@ -122,16 +102,20 @@ if not st.session_state.auth_status:
                     try:
                         supabase.auth.sign_up({"email": new_email, "password": new_pass})
                         st.info("Registration successful.")
-                    except Exception as e:
-                        st.error(str(e))
+                    except Exception as e: st.error(str(e))
 
 # ---------------- MAIN APP ----------------
 
 else:
-    # UPDATED NAME HERE
     st.sidebar.markdown(f"### SkillSense AI")
     st.sidebar.markdown(f"**Role: {st.session_state.user_role.upper()}**")
-    page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment History"])
+    
+    # Navigation logic
+    nav_options = ["Framework Generator"]
+    if st.session_state.user_role == "Admin":
+        nav_options.append("Assessment History")
+    
+    page = st.sidebar.radio("Navigation", nav_options)
 
     if st.sidebar.button("Logout Session"):
         st.session_state.auth_status = False
@@ -158,6 +142,9 @@ else:
                 "summary": summary_para, "questions": questions,
                 "tech": tech, "soft": soft
             }
+            
+            # --- Optional: Save to Database for History ---
+            # supabase.table("assessments").insert({"candidate": cand, "role": role, "score": tech}).execute()
 
         if st.session_state.results:
             res = st.session_state.results
@@ -176,61 +163,31 @@ else:
                 """, unsafe_allow_html=True)
 
             with r2:
-                # 1. PIE CHART
-                fig_pie = go.Figure(data=[go.Pie(
-                    labels=["Technical", "Soft Skills"],
-                    values=[res["tech"], res["soft"]],
-                    hole=0.45,
-                    marker=dict(colors=['#60a5fa', '#1d4ed8'])
-                )])
-                fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), 
-                                     paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"),
-                                     showlegend=True, legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
+                fig_pie = go.Figure(data=[go.Pie(labels=["Technical", "Soft Skills"], values=[res["tech"], res["soft"]], hole=0.45, marker=dict(colors=['#60a5fa', '#1d4ed8']))])
+                fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"), showlegend=True, legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
                 st.plotly_chart(fig_pie, use_container_width=True)
-
-                # 2. ADDITIONAL METRIC BARS
-                metrics_data = {
-                    "Domain Fit": 85,
-                    "Tech Score": res["tech"],
-                    "Soft Skills": res["soft"],
-                    "Culture Fit": 80
-                }
-                fig_metrics = go.Figure(go.Bar(
-                    x=list(metrics_data.values()),
-                    y=list(metrics_data.keys()),
-                    orientation='h',
-                    marker=dict(color=['#60a5fa', '#1d4ed8', '#60a5fa', '#1d4ed8']),
-                    text=[f"{v}%" for v in metrics_data.values()],
-                    textposition='auto',
-                    width=0.5
-                ))
-                fig_metrics.update_layout(height=240, margin=dict(t=20, b=10, l=10, r=10),
-                                         xaxis=dict(visible=False, range=[0, 100]),
-                                         yaxis=dict(showgrid=False, tickfont=dict(color="white")),
-                                         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                                         showlegend=False)
+                
+                metrics_data = {"Domain Fit": 85, "Tech Score": res["tech"], "Soft Skills": res["soft"], "Culture Fit": 80}
+                fig_metrics = go.Figure(go.Bar(x=list(metrics_data.values()), y=list(metrics_data.keys()), orientation='h', marker=dict(color=['#60a5fa', '#1d4ed8', '#60a5fa', '#1d4ed8']), text=[f"{v}%" for v in metrics_data.values()], textposition='auto', width=0.5))
+                fig_metrics.update_layout(height=240, margin=dict(t=20, b=10, l=10, r=10), xaxis=dict(visible=False, range=[0, 100]), yaxis=dict(showgrid=False, tickfont=dict(color="white")), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
                 st.plotly_chart(fig_metrics, use_container_width=True)
-
-                # 3. SCORE BOX
-                st.markdown(f"""
-                <div style="border: 1px solid #1d4ed8; padding: 15px; border-radius: 10px; text-align: center; background: rgba(29, 78, 216, 0.1);">
-                    <span style="color: #60a5fa; font-size: 0.9rem; font-weight: bold;">OVERALL MATCH SCORE</span><br>
-                    <span style="color: white; font-size: 2.2rem; font-weight: bold;">{res['tech']}%</span>
-                </div>
-                """, unsafe_allow_html=True)
 
             st.markdown("### Targeted Interview Questions")
             for i, q in enumerate(res["questions"], 1):
                 st.info(f"{i}. {q}")
 
-            # PDF Logic
-            pdf_buffer = io.BytesIO()
-            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-            styles = getSampleStyleSheet()
-            elements = [Paragraph("HR ASSESSMENT REPORT", styles["Title"]), Spacer(1, 20)]
-            for i, q in enumerate(res["questions"], 1):
-                elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
-            doc.build(elements)
-
-            st.download_button("📥 Download PDF Report", pdf_buffer.getvalue(), 
-                             file_name="HR_Report.pdf", mime="application/pdf", use_container_width=True)
+    # --- ADMIN HISTORY PAGE LOGIC (NEW) ---
+    elif page == "Assessment History":
+        st.header("Admin Dashboard: Assessment Logs")
+        
+        # Fake data for now (since DB logging might not be fully configured yet)
+        history_data = [
+            {"Date": "2026-02-01", "Candidate": "Rahul", "Role": "DevOps Engineer", "Match": "85%"},
+            {"Date": "2026-02-02", "Candidate": "Priya", "Role": "Frontend Developer", "Match": "70%"},
+            {"Date": "2026-02-02", "Candidate": "John Doe", "Role": "ML Engineer", "Match": "92%"},
+        ]
+        
+        df = pd.DataFrame(history_data)
+        st.table(df)
+        
+        st.info("💡 Note: In production, this data will be pulled live from your Supabase 'assessments' table.")
