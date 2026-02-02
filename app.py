@@ -82,9 +82,7 @@ def generate_summary(skills, level, tech):
         f"This job description clearly targets a **{level}-level {role}** profile with "
         f"primary emphasis on **{', '.join(skills)}**. The role appears to be "
         f"{focus}, meaning the candidate will be expected to handle real-world systems, "
-        f"debug production issues, and collaborate with cross-functional teams.\n\n"
-        f"The interview should explore architectural decisions, problem-solving "
-        f"approach, and how the candidate handles live systems."
+        f"debug production issues, and collaborate with cross-functional teams."
     )
     return role, paragraph
 
@@ -181,40 +179,54 @@ else:
                     hole=0.45,
                     marker=dict(colors=['#60a5fa', '#1d4ed8'])
                 )])
-                fig_pie.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), 
-                                     paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
+                fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), 
+                                     paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"),
+                                     showlegend=True, legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
                 st.plotly_chart(fig_pie, use_container_width=True)
 
-                # 2. INDICATOR BAR (Space Filler - Fixed tickfont)
-                fig_bar = go.Figure(go.Bar(
-                    x=[res["tech"], res["soft"]],
-                    y=["Tech  ", "Soft  "],
+                # 2. ADDITIONAL METRIC BARS (Fills the large empty space)
+                metrics_data = {
+                    "Domain Fit": 85,
+                    "Tech Score": res["tech"],
+                    "Soft Skills": res["soft"],
+                    "Culture Fit": 80
+                }
+                fig_metrics = go.Figure(go.Bar(
+                    x=list(metrics_data.values()),
+                    y=list(metrics_data.keys()),
                     orientation='h',
-                    marker=dict(color=['#60a5fa', '#1d4ed8']),
-                    text=[f"{res['tech']}%", f"{res['soft']}%"],
-                    textposition='inside',
-                    width=0.4
+                    marker=dict(color=['#60a5fa', '#1d4ed8', '#60a5fa', '#1d4ed8']),
+                    text=[f"{v}%" for v in metrics_data.values()],
+                    textposition='auto',
+                    width=0.5
                 ))
-                fig_bar.update_layout(height=160, margin=dict(t=0, b=10, l=10, r=10),
-                                     xaxis=dict(visible=False, range=[0, 100]),
-                                     yaxis=dict(showgrid=False, tickfont=dict(color="white")),
-                                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                                     showlegend=False)
-                st.plotly_chart(fig_bar, use_container_width=True)
+                fig_metrics.update_layout(height=240, margin=dict(t=20, b=10, l=10, r=10),
+                                         xaxis=dict(visible=False, range=[0, 100]),
+                                         yaxis=dict(showgrid=False, tickfont=dict(color="white")),
+                                         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                         showlegend=False)
+                st.plotly_chart(fig_metrics, use_container_width=True)
+
+                # 3. SCORE BOX (Bottom filler)
+                st.markdown(f"""
+                <div style="border: 1px solid #1d4ed8; padding: 15px; border-radius: 10px; text-align: center; background: rgba(29, 78, 216, 0.1);">
+                    <span style="color: #60a5fa; font-size: 0.9rem; font-weight: bold;">OVERALL MATCH SCORE</span><br>
+                    <span style="color: white; font-size: 2.2rem; font-weight: bold;">{res['tech']}%</span>
+                </div>
+                """, unsafe_allow_html=True)
 
             st.markdown("### Targeted Interview Questions")
             for i, q in enumerate(res["questions"], 1):
                 st.info(f"{i}. {q}")
 
-            # PDF Section
+            # PDF Logic
             pdf_buffer = io.BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
             styles = getSampleStyleSheet()
-            elements = [Paragraph("ASSESSMENT REPORT", styles["Title"]), Spacer(1, 20)]
+            elements = [Paragraph("HR ASSESSMENT REPORT", styles["Title"]), Spacer(1, 20)]
             for i, q in enumerate(res["questions"], 1):
                 elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
             doc.build(elements)
 
-            st.download_button("📥 Download Report", pdf_buffer.getvalue(), 
-                             file_name="Report.pdf", mime="application/pdf", 
-                             use_container_width=True)
+            st.download_button("📥 Download PDF Report", pdf_buffer.getvalue(), 
+                             file_name="HR_Report.pdf", mime="application/pdf", use_container_width=True)
