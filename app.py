@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # ---------------- CONFIG ----------------
 
@@ -79,8 +79,8 @@ def generate_summary(skills, level, tech):
     focus = "strongly technical" if tech >= 65 else "balanced between technical and soft skills"
 
     paragraph = (
-        f"This job description clearly targets a **{level}-level {role}** profile with "
-        f"primary emphasis on **{', '.join(skills)}**. The role appears to be "
+        f"This job description clearly targets a {level}-level {role} profile with "
+        f"primary emphasis on {', '.join(skills)}. The role appears to be "
         f"{focus}, meaning the candidate will be expected to handle real-world systems, "
         f"debug production issues, and collaborate with cross-functional teams."
     )
@@ -89,61 +89,41 @@ def generate_summary(skills, level, tech):
 # ---------------- AUTH UI ----------------
 
 if not st.session_state.auth_status:
-
     col1, col2, col3 = st.columns([1, 1.5, 1])
-
     with col2:
-
-        st.markdown(
-            "<h1 style='text-align:center;'>SkillSense AI Portal</h1>",
-            unsafe_allow_html=True,
-        )
-
+        st.markdown("<h1 style='text-align:center;'>SkillSense AI Portal</h1>", unsafe_allow_html=True)
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
 
         with login_tab:
-
             with st.form("login_form"):
-
                 email = st.text_input("Corporate Email")
                 password = st.text_input("Password", type="password")
                 role_choice = st.selectbox("Login as", ["Admin", "User"])
-
                 submit = st.form_submit_button("Authenticate", use_container_width=True)
 
                 if submit:
-
                     try:
                         res = supabase.auth.sign_in_with_password(
                             {"email": email, "password": password}
                         )
 
                         if res and res.session:
-
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
-                            st.session_state.results = None
                             st.rerun()
-
                         else:
-                            st.error("Authentication failed.")
+                            st.error("Invalid login credentials.")
 
-                    except:
-                        st.error("Authentication failed.")
+                    except Exception as e:
+                        st.error(f"Login failed: {str(e)}")
 
         with reg_tab:
-
             with st.form("reg_form"):
-
                 new_email = st.text_input("Email Address")
                 new_pass = st.text_input("Password")
-
                 if st.form_submit_button("Create Account", use_container_width=True):
-
                     try:
-                        supabase.auth.sign_up(
-                            {"email": new_email, "password": new_pass}
-                        )
+                        supabase.auth.sign_up({"email": new_email, "password": new_pass})
                         st.info("Registration successful.")
                     except Exception as e:
                         st.error(str(e))
@@ -151,28 +131,20 @@ if not st.session_state.auth_status:
 # ---------------- MAIN APP ----------------
 
 else:
-
     st.sidebar.markdown("### SkillSense AI")
     st.sidebar.markdown(f"**Role: {st.session_state.user_role.upper()}**")
-
     page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment History"])
 
     if st.sidebar.button("Logout Session"):
-
-        st.session_state.auth_status = False
-        st.session_state.user_role = None
-        st.session_state.results = None
+        st.session_state.clear()
         st.rerun()
 
     if page == "Framework Generator":
-
         st.header("Evaluation Framework")
-
         c1, c2 = st.columns([1.5, 1])
 
         with c1:
             jd = st.text_area("Input Job Description", height=260)
-
         with c2:
             cand = st.text_input("Candidate Name")
             level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
@@ -180,7 +152,6 @@ else:
             soft = 100 - tech
 
         if st.button("Process Assessment", use_container_width=True) and jd:
-
             skills = extract_skills(jd)
             role, summary_para = generate_summary(skills, level, tech)
             questions = generate_questions(skills, level)
@@ -196,63 +167,76 @@ else:
             }
 
         if st.session_state.results:
-
             res = st.session_state.results
-
             st.divider()
-
             r1, r2 = st.columns([1, 1])
 
             with r1:
-
                 st.subheader("Live Result Summary")
-
                 st.markdown(
                     f"""
-<div style="background-color:#0f172a;padding:18px;border-radius:12px;color:white;">
-<h4>Candidate:</h4> {res['cand'] or 'N/A'}<br><br>
-<h4>Detected Skills:</h4> {', '.join(res['skills'])}<br><br>
-<h4>Suggested Role:</h4> {res['role']}<br><br>
-<p>{res['summary']}</p>
-</div>
-""",
+                    <div style="background-color:#0f172a;padding:18px;border-radius:12px;color:white;">
+                    <h4>Candidate:</h4> {res['cand'] or 'N/A'}<br><br>
+                    <h4>Detected Skills:</h4> {', '.join(res['skills'])}<br><br>
+                    <h4>Suggested Role:</h4> {res['role']}<br><br>
+                    <p>{res['summary']}</p>
+                    </div>
+                    """,
                     unsafe_allow_html=True,
                 )
 
-            # ---------------- PDF ----------------
+            with r2:
+                fig_pie = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=["Technical", "Soft Skills"],
+                            values=[res["tech"], res["soft"]],
+                            hole=0.45,
+                        )
+                    ]
+                )
+                fig_pie.update_layout(height=300)
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            st.markdown("### Targeted Interview Questions")
+            for i, q in enumerate(res["questions"], 1):
+                st.info(f"{i}. {q}")
+
+            # ---------------- PDF FIX ----------------
 
             pdf_buffer = io.BytesIO()
-
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-            styles = getSampleStyleSheet()
 
-            elements = [
-                Paragraph("SKILLSENSE AI – HR ASSESSMENT REPORT", styles["Title"]),
-                Spacer(1, 20),
-                Paragraph(f"<b>Candidate:</b> {res['cand'] or 'N/A'}", styles["Normal"]),
-                Paragraph(f"<b>Role:</b> {res['role']}", styles["Normal"]),
-                Paragraph(f"<b>Skills:</b> {', '.join(res['skills'])}", styles["Normal"]),
-                Spacer(1, 15),
-                Paragraph("<b>Summary:</b>", styles["Heading2"]),
-                Paragraph(res["summary"], styles["Normal"]),
-                Spacer(1, 15),
-                Paragraph("<b>Targeted Interview Questions:</b>", styles["Heading2"]),
-            ]
+            styles = getSampleStyleSheet()
+            bold = ParagraphStyle(
+                "Bold", parent=styles["Normal"], fontSize=11, spaceAfter=6
+            )
+
+            elements = []
+
+            elements.append(Paragraph("HR ASSESSMENT REPORT", styles["Title"]))
+            elements.append(Spacer(1, 20))
+
+            elements.append(Paragraph(f"<b>Candidate:</b> {res['cand']}", bold))
+            elements.append(Paragraph(f"<b>Suggested Role:</b> {res['role']}", bold))
+            elements.append(Paragraph(f"<b>Detected Skills:</b> {', '.join(res['skills'])}", bold))
+
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph("<b>Summary:</b>", bold))
+            elements.append(Paragraph(res["summary"], styles["Normal"]))
+
+            elements.append(Spacer(1, 15))
+            elements.append(Paragraph("<b>Targeted Interview Questions:</b>", bold))
 
             for i, q in enumerate(res["questions"], 1):
-                elements.append(
-                    Paragraph(f"{i}. {q}", styles["Normal"])
-                )
+                elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
 
             doc.build(elements)
-
-            # 🔥 REQUIRED
-            pdf_buffer.seek(0)
 
             st.download_button(
                 "📥 Download PDF Report",
                 pdf_buffer.getvalue(),
-                file_name="SkillSense_Report.pdf",
+                file_name="HR_Report.pdf",
                 mime="application/pdf",
                 use_container_width=True,
             )
