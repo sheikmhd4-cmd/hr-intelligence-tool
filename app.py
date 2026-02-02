@@ -15,7 +15,8 @@ SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.set_page_config(page_title="HR Intel Portal", layout="wide")
+# UPDATED NAME HERE
+st.set_page_config(page_title="SkillSense AI", layout="wide")
 
 # ---------------- SESSION ----------------
 
@@ -91,7 +92,8 @@ def generate_summary(skills, level, tech):
 if not st.session_state.auth_status:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        st.markdown("<h1 style='text-align:center;'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
+        # UPDATED NAME HERE
+        st.markdown("<h1 style='text-align:center;'>SkillSense AI Portal</h1>", unsafe_allow_html=True)
         login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
 
         with login_tab:
@@ -126,7 +128,9 @@ if not st.session_state.auth_status:
 # ---------------- MAIN APP ----------------
 
 else:
-    st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
+    # UPDATED NAME HERE
+    st.sidebar.markdown(f"### SkillSense AI")
+    st.sidebar.markdown(f"**Role: {st.session_state.user_role.upper()}**")
     page = st.sidebar.radio("Navigation", ["Framework Generator", "Assessment History"])
 
     if st.sidebar.button("Logout Session"):
@@ -184,7 +188,7 @@ else:
                                      showlegend=True, legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
                 st.plotly_chart(fig_pie, use_container_width=True)
 
-                # 2. ADDITIONAL METRIC BARS (Fills the large empty space)
+                # 2. ADDITIONAL METRIC BARS
                 metrics_data = {
                     "Domain Fit": 85,
                     "Tech Score": res["tech"],
@@ -207,7 +211,7 @@ else:
                                          showlegend=False)
                 st.plotly_chart(fig_metrics, use_container_width=True)
 
-                # 3. SCORE BOX (Bottom filler)
+                # 3. SCORE BOX
                 st.markdown(f"""
                 <div style="border: 1px solid #1d4ed8; padding: 15px; border-radius: 10px; text-align: center; background: rgba(29, 78, 216, 0.1);">
                     <span style="color: #60a5fa; font-size: 0.9rem; font-weight: bold;">OVERALL MATCH SCORE</span><br>
