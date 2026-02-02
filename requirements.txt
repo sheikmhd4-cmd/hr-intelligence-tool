@@ -3,3 +3,8 @@ pandas
 supabase
 plotly
 reportlab
+
+streamlit
+supabase
+fpdf
+openai
