@@ -55,7 +55,6 @@ def extract_skills(text):
         if k in text:
             found.append(v)
 
-    # heuristic enrichment
     if "backend" in text:
         found.append("Backend Systems")
     if "frontend" in text or "ui" in text:
@@ -263,11 +262,13 @@ else:
 
                 fig_metrics.update_layout(height=200, xaxis=dict(range=[0, 100]))
                 st.plotly_chart(fig_metrics, use_container_width=True)
-st.markdown("### 🎯 Targeted Interview Questions")
 
-for i, q in enumerate(res["questions"], 1):
-    st.info(f"{i}. {q}")
+            # ✅ -------- TARGETED QUESTIONS UI (ADDED) --------
 
+            st.markdown("### 🎯 Targeted Interview Questions")
+
+            for i, q in enumerate(res["questions"], 1):
+                st.info(f"{i}. {q}")
 
             # ---------- PDF ----------
 
