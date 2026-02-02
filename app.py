@@ -241,7 +241,7 @@ else:
                         )
                     ]
                 )
-                fig_pie.update_layout(height=300)
+                fig_pie.update_layout(height=380)
                 st.plotly_chart(fig_pie, use_container_width=True)
 
                 metrics_data = {
