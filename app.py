@@ -76,12 +76,21 @@ if not st.session_state.auth_status:
                 
                 if submit:
                     try:
-                        res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                        res = supabase.auth.sign_in_with_password(
+                            {"email": email, "password": password}
+                        )
+
+                        # 🔥 retry once automatically (Supabase latency bug fix)
+                        if not res.user:
+                            res = supabase.auth.sign_in_with_password(
+                                {"email": email, "password": password}
+                            )
+
                         if res.user:
-                            # சிங்கிள் கிளிக் லாகின் - ஸ்டேட் அப்டேட் மட்டும்
                             st.session_state.auth_status = True
                             st.session_state.user_role = role_choice
-                            st.rerun() # ஒரு முறை மட்டும் ரீ-ரன்
+                            st.rerun()
+
                     except:
                         st.error("Authentication failed. Please check credentials.")
 
@@ -114,8 +123,7 @@ else:
         with c1:
             jd = st.text_area("Input Job Description", height=260)
         with c2:
-            # Candidate Name இப்போது காலியாக இருக்கும் (No example name)
-            cand = st.text_input("Candidate Name", value="") 
+            cand = st.text_input("Candidate Name", value="")
             level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
             tech = st.slider("Technical Weight (%)", 0, 100, 70)
             soft = 100 - tech
@@ -126,9 +134,14 @@ else:
             questions = generate_questions(found_skills, level)
 
             st.session_state.results = {
-                "cand": cand, "skills": found_skills, "role": role,
-                "focus": focus, "insight": insight, "questions": questions,
-                "tech": tech, "soft": soft
+                "cand": cand,
+                "skills": found_skills,
+                "role": role,
+                "focus": focus,
+                "insight": insight,
+                "questions": questions,
+                "tech": tech,
+                "soft": soft
             }
 
         if st.session_state.results:
@@ -143,7 +156,13 @@ else:
                 st.info(res['insight'])
 
             with r2:
-                fig = go.Figure(data=[go.Pie(labels=["Technical", "Soft Skills"], values=[res['tech'], res['soft']], hole=0.45)])
+                fig = go.Figure(
+                    data=[go.Pie(
+                        labels=["Technical", "Soft Skills"],
+                        values=[res['tech'], res['soft']],
+                        hole=0.45
+                    )]
+                )
                 fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -151,10 +170,11 @@ else:
             for i, q in enumerate(res['questions'], 1):
                 st.info(f"{i}. {q}")
 
-            # PDF GENERATION
+            # ---------------- PDF ----------------
             pdf_buffer = io.BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
             styles = getSampleStyleSheet()
+
             elements = [
                 Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]),
                 Spacer(1, 20),
@@ -165,14 +185,18 @@ else:
                 Paragraph("<b>Interview Questions:</b>", styles["Heading2"]),
                 Spacer(1, 10)
             ]
+
             for i, q in enumerate(res['questions'], 1):
                 elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
-            
+
             doc.build(elements)
-            
+
+            # 🔥 CRITICAL FIX
+            pdf_buffer.seek(0)
+
             st.download_button(
                 label="📥 Download Detailed Report",
-                data=pdf_buffer.getvalue(),
+                data=pdf_buffer,
                 file_name=f"Assessment_{res['cand']}.pdf" if res['cand'] else "Report.pdf",
                 mime="application/pdf",
                 use_container_width=True
@@ -183,4 +207,5 @@ else:
         try:
             res_db = supabase.table("candidate_results").select("*").execute()
             st.dataframe(pd.DataFrame(res_db.data), use_container_width=True)
-        except: st.error("Database connection error.")
+        except:
+            st.error("Database connection error.")
