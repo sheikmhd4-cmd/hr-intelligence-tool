@@ -1,273 +1,196 @@
 import streamlit as st
-import pandas as pd
+from fpdf import FPDF
 from supabase import create_client
-import io
-import plotly.graph_objects as go
-
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+import hashlib
+import os
+import openai
 
 # ---------------- CONFIG ----------------
-SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
-SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
+
+st.set_page_config(page_title="HR Intelligence Tool", layout="wide")
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.set_page_config(page_title="HR Intel Portal", layout="wide")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ---------------- SESSION ----------------
-if "auth_status" not in st.session_state:
-    st.session_state.auth_status = False
-if "user_role" not in st.session_state:
-    st.session_state.user_role = None
-if "results" not in st.session_state:
-    st.session_state.results = None
 
-# ---------------- CORE LOGIC ----------------
-SKILL_DB = {
-    "python": "Python", "sql": "SQL", "docker": "Docker",
-    "kubernetes": "Kubernetes", "aws": "AWS", "azure": "Azure",
-    "react": "React", "machine learning": "Machine Learning",
-    "data analysis": "Data Analysis", "devops": "DevOps",
-    "ci/cd": "CI/CD", "terraform": "Terraform", "linux": "Linux",
-    "java": "Java", "javascript": "JavaScript", "api": "API Development"
-}
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-def extract_skills(text):
-    text = text.lower()
-    found = [v for k, v in SKILL_DB.items() if k in text]
-    return list(set(found)) if found else ["General Technical"]
+if "analysis_result" not in st.session_state:
+    st.session_state.analysis_result = ""
 
-def generate_questions(skills, level):
-    qs = []
-    for s in skills:
-        qs.extend([
-            f"Explain fundamentals of {s}.",
-            f"Describe a production project using {s}.",
-            f"How do you debug failures in {s} systems?",
-        ])
-    while len(qs) < 12:
-        qs.append("Explain a complex technical challenge you solved recently.")
-    return qs[:12]
+# ---------------- UTIL ----------------
 
-def generate_hiring_intelligence(skills, level, tech):
-    risks = []
-    signals = []
-    focus = []
-    gaps = []
+def hash_password(p):
+    return hashlib.sha256(p.encode()).hexdigest()
 
-    if "General Technical" in skills:
-        risks.append("JD is vague on technical depth.")
-        gaps.append("Role clarity missing in JD.")
+# ---------------- LOGIN ----------------
 
-    if tech >= 70:
-        focus.append("Deep system design and architecture.")
-    else:
-        focus.append("Behavioral + collaboration scenarios.")
+def login_page():
 
-    if "DevOps" in skills:
-        signals.append("Production reliability exposure expected.")
-        focus.append("Incident handling and scaling.")
-    if "Machine Learning" in skills:
-        signals.append("Model lifecycle ownership.")
-        focus.append("Data pipelines and evaluation metrics.")
+    st.title("HR Intelligence Platform")
 
-    seniority = "High confidence for senior role." if level == "Senior" else "Moderate maturity expected."
+    email = st.text_input("Email", key="login_email")
+    password = st.text_input("Password", type="password", key="login_pwd")
 
-    recommendation = (
-        "Strong hire if candidate demonstrates ownership and production impact."
-        if tech >= 65 else
-        "Hire depends on collaboration and learning agility."
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("Login", key="login_btn"):
+            pwd = hash_password(password)
+
+            data = supabase.table("users").select("*") \
+                .eq("email", email) \
+                .eq("password", pwd) \
+                .execute()
+
+            if data.data:
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
+
+    with col2:
+        if st.button("Register", key="register_btn"):
+            pwd = hash_password(password)
+
+            supabase.table("users").insert({
+                "email": email,
+                "password": pwd
+            }).execute()
+
+            st.success("Account created. Login now.")
+
+# ---------------- AI ANALYSIS ----------------
+
+def analyze_resume(resume, jd):
+
+    prompt = f"""
+You are an enterprise HR analyst.
+
+Resume:
+{resume}
+
+Job Description:
+{jd}
+
+Generate structured professional sections:
+
+1. Insightful Analysis
+2. Risk Flags
+3. Hiring Signals
+4. Interview Focus Areas
+5. Culture and Soft Skill Hints
+6. Gaps vs JD
+7. Seniority Confidence
+8. Hiring Recommendation Tone
+
+Be specific and recruiter-grade.
+"""
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
     )
 
-    return {
-        "risks": risks or ["No major risk flags detected."],
-        "signals": signals or ["Generalist engineering exposure expected."],
-        "focus": focus,
-        "gaps": gaps or ["JD appears balanced."],
-        "seniority": seniority,
-        "recommendation": recommendation
-    }
+    return response.choices[0].message.content
 
-# ---------------- AUTH UI ----------------
-if not st.session_state.auth_status:
+# ---------------- PDF ----------------
 
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        st.markdown("<h1 style='text-align:center;'>HR Intelligence Portal</h1>", unsafe_allow_html=True)
+def create_pdf(text):
 
-        login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
 
-        with login_tab:
-            with st.form("login_form"):
-                email = st.text_input("Corporate Email")
-                password = st.text_input("Password", type="password")
-                role_choice = st.selectbox("Login as", ["Admin", "User"])
-                submit = st.form_submit_button("Authenticate", use_container_width=True)
+    pdf.set_font("Arial", size=11)
 
-                if submit:
-                    try:
-                        res = supabase.auth.sign_in_with_password(
-                            {"email": email, "password": password}
-                        )
-                        if res.user:
-                            st.session_state.auth_status = True
-                            st.session_state.user_role = role_choice
-                            st.rerun()
-                    except:
-                        st.error("Authentication failed.")
+    for line in text.split("\n"):
+        pdf.multi_cell(0, 8, line)
 
-        with reg_tab:
-            with st.form("reg_form"):
-                new_email = st.text_input("Email Address")
-                new_pass = st.text_input("Password", type="password")
+    path = "analysis_report.pdf"
+    pdf.output(path)
 
-                if st.form_submit_button("Create Account", use_container_width=True):
-                    try:
-                        supabase.auth.sign_up(
-                            {"email": new_email, "password": new_pass}
-                        )
-                        st.info("Registration successful.")
-                    except Exception as e:
-                        st.error(str(e))
+    return path
 
 # ---------------- MAIN APP ----------------
-else:
 
-    st.sidebar.markdown(f"### Role: {st.session_state.user_role.upper()}")
+def main_app():
 
-    nav = ["Framework Generator"]
-    if st.session_state.user_role == "Admin":
-        nav.append("Assessment History")
+    st.title("HR Intelligence Dashboard")
+
+    nav = ["Resume Analyzer", "Download Report", "Logout"]
 
     page = st.sidebar.radio("Navigation", nav, key="nav_radio")
 
-    if st.sidebar.button("Logout Session"):
-        st.session_state.auth_status = False
-        st.session_state.results = None
-        st.rerun()
+    # ---------------- ANALYZER ----------------
 
-    if page == "Framework Generator":
+    if page == "Resume Analyzer":
 
-        st.header("Evaluation Framework")
+        st.subheader("Candidate Evaluation")
 
-        c1, c2 = st.columns([1.5, 1])
-        with c1:
-            jd = st.text_area("Input Job Description", height=260)
+        resume_text = st.text_area(
+            "Paste Resume Text",
+            height=250,
+            key="resume_box"
+        )
 
-        with c2:
-            cand = st.text_input("Candidate Name", value="")
-            level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
-            tech = st.slider("Technical Weight (%)", 0, 100, 70)
-            soft = 100 - tech
+        jd_text = st.text_area(
+            "Paste Job Description",
+            height=250,
+            key="jd_box"
+        )
 
-        if st.button("Process Assessment", use_container_width=True) and jd:
+        if st.button("Run Analysis", key="analyze_btn"):
 
-            skills = extract_skills(jd)
-            questions = generate_questions(skills, level)
-            intelligence = generate_hiring_intelligence(skills, level, tech)
+            if not resume_text or not jd_text:
+                st.warning("Provide resume and JD")
+            else:
+                with st.spinner("Analyzing..."):
+                    result = analyze_resume(resume_text, jd_text)
+                    st.session_state.analysis_result = result
 
-            st.session_state.results = {
-                "cand": cand,
-                "skills": skills,
-                "questions": questions,
-                "tech": tech,
-                "soft": soft,
-                **intelligence
-            }
+        if st.session_state.analysis_result:
 
-        if st.session_state.results:
+            st.markdown("### HR Evaluation")
+            st.write(st.session_state.analysis_result)
 
-            res = st.session_state.results
+    # ---------------- PDF ----------------
 
-            st.divider()
+    elif page == "Download Report":
 
-            r1, r2 = st.columns([1, 1])
+        st.subheader("Export Analysis")
 
-            with r1:
-                st.subheader("Live Result Summary")
+        if st.session_state.analysis_result:
 
-                st.write(f"**Candidate:** {res['cand'] or 'N/A'}")
-                st.write(f"**Detected Skills:** {', '.join(res['skills'])}")
+            path = create_pdf(st.session_state.analysis_result)
 
-                st.markdown("### 🧠 Hiring Intelligence")
-
-                st.markdown("**⚠ Risk Flags:**")
-                for x in res["risks"]:
-                    st.write("- " + x)
-
-                st.markdown("**✅ Hiring Signals:**")
-                for x in res["signals"]:
-                    st.write("- " + x)
-
-                st.markdown("**🎯 Interview Focus Areas:**")
-                for x in res["focus"]:
-                    st.write("- " + x)
-
-                st.markdown("**📉 JD Gaps:**")
-                for x in res["gaps"]:
-                    st.write("- " + x)
-
-                st.markdown(f"**📊 Seniority Confidence:** {res['seniority']}")
-                st.success(res["recommendation"])
-
-            with r2:
-                fig = go.Figure(
-                    data=[go.Pie(
-                        labels=["Technical", "Soft Skills"],
-                        values=[res["tech"], res["soft"]],
-                        hole=0.45
-                    )]
+            with open(path, "rb") as f:
+                st.download_button(
+                    "Download PDF",
+                    f,
+                    file_name="HR_Analysis_Report.pdf",
+                    key="pdf_btn"
                 )
 
-                fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
-                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Run analysis first")
 
-            st.markdown("### Targeted Interview Questions")
+    # ---------------- LOGOUT ----------------
 
-            for i, q in enumerate(res["questions"], 1):
-                st.info(f"{i}. {q}")
+    elif page == "Logout":
+        st.session_state.logged_in = False
+        st.rerun()
 
-            # -------- PDF --------
-            pdf_buffer = io.BytesIO()
-            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-            styles = getSampleStyleSheet()
+# ---------------- ROUTER ----------------
 
-            elements = [
-                Paragraph("INTERVIEW ASSESSMENT REPORT", styles["Title"]),
-                Spacer(1, 20),
-                Paragraph(f"<b>Candidate:</b> {res['cand'] or 'N/A'}", styles["Normal"]),
-                Paragraph(f"<b>Skills:</b> {', '.join(res['skills'])}", styles["Normal"]),
-                Spacer(1, 15),
-                Paragraph("<b>Risk Flags</b>", styles["Heading2"])
-            ]
-
-            for x in res["risks"]:
-                elements.append(Paragraph(f"- {x}", styles["Normal"]))
-
-            elements.append(Spacer(1, 12))
-            elements.append(Paragraph("<b>Hiring Recommendation</b>", styles["Heading2"]))
-            elements.append(Paragraph(res["recommendation"], styles["Normal"]))
-
-            for i, q in enumerate(res["questions"], 1):
-                elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
-
-            doc.build(elements)
-
-            st.download_button(
-                "📥 Download Detailed Report",
-                pdf_buffer.getvalue(),
-                file_name="Assessment_Report.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-
-    elif page == "Assessment History":
-
-        st.header("Enterprise Audit Logs")
-
-        try:
-            res_db = supabase.table("candidate_results").select("*").execute()
-            st.dataframe(pd.DataFrame(res_db.data), use_container_width=True)
-        except:
-            st.error("Database connection error.")
+if st.session_state.logged_in:
+    main_app()
+else:
+    login_page()
