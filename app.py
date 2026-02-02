@@ -257,6 +257,45 @@ else:
                 fig.update_layout(height=350)
                 st.plotly_chart(fig, use_container_width=True)
 
+# ---- Compact Signals Panel ----
+
+if res["tech"] >= 75:
+    depth = "Deep Technical Round"
+    risk = "Low Risk Hire"
+elif res["tech"] >= 50:
+    depth = "Balanced Interview"
+    risk = "Moderate Risk"
+else:
+    depth = "Soft Skill Focused"
+    risk = "High Risk if Tech Weak"
+
+rounds = "3–4 Rounds" if res["tech"] >= 60 else "2–3 Rounds"
+complexity = "High" if len(res["skills"]) >= 6 else "Medium"
+
+st.markdown(
+    f"""
+<div style="
+background:#020617;
+border:1px solid #334155;
+padding:14px;
+border-radius:10px;
+color:white;
+margin-top:-15px;
+">
+
+<b>⚡ Assessment Signals</b><br><br>
+
+• <b>Interview Depth:</b> {depth}<br>
+• <b>Hiring Risk:</b> {risk}<br>
+• <b>Hiring Complexity:</b> {complexity}<br>
+• <b>Recommended Rounds:</b> {rounds}
+
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+
             st.markdown("### Targeted Interview Questions")
 
             for i, q in enumerate(res["questions"], 1):
