@@ -1,27 +1,30 @@
 import streamlit as st
-from fpdf import FPDF
-from supabase import create_client
-import hashlib
 import os
 from openai import OpenAI
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
+from supabase import create_client
 
 # ---------------- CONFIG ----------------
 
-st.set_page_config(
-    page_title="HR Intelligence Tool",
-    layout="wide"
-)
-
+# 1. முதலில் கீகளைப் பெற முயற்சிப்போம்
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
+# 2. முக்கியமான செக்: கீ இல்லையென்றால் இங்கேயே நிறுத்திவிடுவோம்
+if not OPENAI_KEY:
+    st.error("❌ OpenAI API Key கிடைக்கவில்லை! Streamlit Secrets-ல் 'OPENAI_API_KEY' சரியாக உள்ளதா எனப் பார்க்கவும்.")
+    st.stop() # இது எரர் கிராஷ் ஆவதைத் தடுக்கும்
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("❌ Supabase Credentials கிடைக்கவில்லை!")
+    st.stop()
+
+# 3. இப்போது Client-களை உருவாக்கலாம் (இங்கேதான் எரர் வந்தது, இப்போது வராது)
 client = OpenAI(api_key=OPENAI_KEY)
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ---------------- REST OF THE CODE ----------------
+# உங்கள் மீதமுள்ள கோட் இங்கே தொடரும்...
 
 # ---------------- SESSION INIT ----------------
 
