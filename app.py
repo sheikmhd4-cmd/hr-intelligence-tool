@@ -1,30 +1,26 @@
 import streamlit as st
-import os
-from openai import OpenAI
 from supabase import create_client
+from openai import OpenAI
+import hashlib
+import os
 
 # ---------------- CONFIG ----------------
 
-# 1. முதலில் கீகளைப் பெற முயற்சிப்போம்
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# 2. முக்கியமான செக்: கீ இல்லையென்றால் இங்கேயே நிறுத்திவிடுவோம்
-if not OPENAI_KEY:
-    st.error("❌ OpenAI API Key கிடைக்கவில்லை! Streamlit Secrets-ல் 'OPENAI_API_KEY' சரியாக உள்ளதா எனப் பார்க்கவும்.")
-    st.stop() # இது எரர் கிராஷ் ஆவதைத் தடுக்கும்
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("❌ Supabase Credentials கிடைக்கவில்லை!")
+# Safe ah keys eduka st.secrets use panrom
+try:
+    S_URL = st.secrets["SUPABASE_URL"]
+    S_KEY = st.secrets["SUPABASE_KEY"]
+    O_KEY = st.secrets["OPENAI_API_KEY"]
+except KeyError:
+    st.error("❌ Secrets missing! Dashboard -> Settings -> Secrets la keys update pannunga.")
     st.stop()
 
-# 3. இப்போது Client-களை உருவாக்கலாம் (இங்கேதான் எரர் வந்தது, இப்போது வராது)
-client = OpenAI(api_key=OPENAI_KEY)
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Client setup
+client = OpenAI(api_key=O_KEY)
+supabase = create_client(S_URL, S_KEY)
 
 # ---------------- REST OF THE CODE ----------------
-# உங்கள் மீதமுள்ள கோட் இங்கே தொடரும்...
+# Inga unga pazhaya login/analysis logic continue pannunga
 
 # ---------------- SESSION INIT ----------------
 
