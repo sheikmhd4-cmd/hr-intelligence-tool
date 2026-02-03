@@ -2,321 +2,296 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 import io
-import plotly.graph_objects as go
-from datetime import datetime
-
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+import json
+from datetime import datetime
+import re
 
-# ---------------- CONFIG ----------------
+# ---------------- SUPABASE CONFIG ----------------
 SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
 SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.set_page_config(page_title="SkillSense AI", layout="wide")
+# ---------------- PROFESSIONAL ADMIN AUTH CODE ----------------
+ADMIN_AUTH_CODE = "SSAI-ADMIN-2026-X7K9"
 
-# ---------------- SESSION ----------------
-if "auth_status" not in st.session_state:
-    st.session_state.auth_status = False
-if "user_role" not in st.session_state:
-    st.session_state.user_role = None
-if "results" not in st.session_state:
-    st.session_state.results = None
-
-# ---------------- CORE LOGIC ----------------
-
-SKILL_DB = {
-    "python": "Python",
-    "sql": "SQL",
-    "docker": "Docker",
-    "kubernetes": "Kubernetes",
-    "aws": "AWS",
-    "azure": "Azure",
-    "react": "React",
-    "machine learning": "Machine Learning",
-    "data analysis": "Data Analysis",
-    "devops": "DevOps",
-    "ci/cd": "CI/CD",
-    "terraform": "Terraform",
-    "linux": "Linux",
-    "java": "Java",
-    "javascript": "JavaScript",
-    "api": "API Development",
+# ---------------- DEFAULT USERS ----------------
+DEFAULT_USERS = {
+    "user@gmail.com": {"password": "user123", "role": "user"},
+    "hr@company.com": {"password": "hr456", "role": "user"}
 }
 
-# ---------- SMART SKILL EXTRACTION ----------
+# Dynamic user storage
+if 'custom_users' not in st.session_state:
+    st.session_state.custom_users = {}
 
-def extract_skills(text):
-    text = text.lower()
-    found = []
+SKILL_SENSE_DB = {
+    "python": "Python", "java": "Java", "react": "React", "sql": "SQL", 
+    "aws": "AWS", "docker": "Docker", "angular": "Angular", "node": "Node.js"
+}
 
-    for k, v in SKILL_DB.items():
-        if k in text:
-            found.append(v)
+# ---------------- FUNCTIONS ----------------
+def extract_resume_skills(resume_text):
+    if not resume_text: return []
+    text = resume_text.lower()
+    found_skills = []
+    for keyword, skill in SKILL_SENSE_DB.items():
+        if keyword in text:
+            found_skills.append(skill)
+    return list(set(found_skills))[:8]
 
-    if "backend" in text:
-        found.append("Backend Systems")
-    if "frontend" in text or "ui" in text:
-        found.append("Frontend Development")
-    if "microservice" in text:
-        found.append("Microservices")
-    if "cloud" in text:
-        found.append("Cloud Architecture")
-    if "pipeline" in text:
-        found.append("CI/CD")
+def generate_hiring_recommendation(skills, level):
+    skill_count = len(skills)
+    score = min(95, 25 + skill_count * 8)
+    if skill_count >= (3 if level == "Junior" else 6 if level == "Mid" else 8):
+        return "HIRE - Strong candidate", "Strong Match", score
+    return "NO HIRE - Needs more skills", "Skill Gap", score
 
-    return list(set(found)) if found else ["General Engineering"]
+def generate_interview_questions(skills, level):
+    return [f"Tell me about your {skill} experience?" for skill in skills[:6]]
 
-# ---------- QUESTIONS ----------
+def save_assessment(results):
+    try:
+        data = {
+            "candidate": results['candidate'],
+            "skills": json.dumps(results['skills']),
+            "level": results['level'],
+            "hire_decision": results['hire_decision'],
+            "score": results['score'],
+            "status": results['status'],
+            "created_at": datetime.now().isoformat()
+        }
+        supabase.table("assessments").insert(data).execute()
+    except: pass
 
-def generate_questions(skills, level):
-    qs = []
+def generate_hiring_pdf(results):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("SkillSense AI - Analysis Report", styles['Title']),
+        Paragraph(f"Candidate: {results['candidate']}", styles['Heading1']),
+        Paragraph(f"Decision: {results['hire_decision']}", styles['Heading2'])
+    ]
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
-    for s in skills:
-        qs.extend([
-            f"What real-world systems have you built using {s}?",
-            f"Explain a production issue you debugged in {s}.",
-            f"How would you scale a platform built with {s}?",
-        ])
+def get_all_users():
+    return {**DEFAULT_USERS, **st.session_state.custom_users}
 
-    while len(qs) < 12:
-        qs.append("Describe the toughest technical challenge you solved recently.")
+# ---------------- SESSION STATE ----------------
+if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+if 'current_user' not in st.session_state: st.session_state.current_user = None
+if 'user_role' not in st.session_state: st.session_state.user_role = None
+if 'results' not in st.session_state: st.session_state.results = None
+if 'signup_step' not in st.session_state: st.session_state.signup_step = None
+if 'temp_email' not in st.session_state: st.session_state.temp_email = None
+if 'temp_password' not in st.session_state: st.session_state.temp_password = None
 
-    return qs[:12]
-
-# ---------- SUMMARY ----------
-
-def generate_summary(skills, level, tech):
-    if "Machine Learning" in skills:
-        role = "Data Scientist / ML Engineer"
-    elif "DevOps" in skills or "Cloud Architecture" in skills:
-        role = "Cloud / DevOps Engineer"
-    elif "Frontend Development" in skills or "React" in skills:
-        role = "Frontend Engineer"
-    elif "Backend Systems" in skills:
-        role = "Backend Engineer"
-    else:
-        role = "Software Engineer"
-
-    focus = "deep technical ownership" if tech > 65 else "balanced engineering maturity"
-
-    paragraph = (
-        f"This job description targets a **{level}-level {role}** profile with strong "
-        f"emphasis on **{', '.join(skills)}**. The role appears to demand "
-        f"{focus}, production debugging skills, system scalability thinking, and "
-        f"cross-team collaboration in real delivery environments."
-    )
-
-    return role, paragraph
-
-# ---------------- AUTH UI ----------------
-
-if not st.session_state.auth_status:
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        st.markdown("<h1 style='text-align:center;'>SkillSense AI</h1>", unsafe_allow_html=True)
-        login_tab, reg_tab = st.tabs(["Secure Login", "Registration"])
-
-        with login_tab:
-            with st.form("login_form"):
-                email = st.text_input("Email")
-                password = st.text_input("Password", type="password")
-                role_choice = st.selectbox("Login as", ["Admin", "User"])
-                if st.form_submit_button("Authenticate", use_container_width=True):
-                    try:
-                        res = supabase.auth.sign_in_with_password(
-                            {"email": email, "password": password}
-                        )
-                        if res and res.session:
-                            st.session_state.auth_status = True
-                            st.session_state.user_role = role_choice
-                            st.rerun()
-                        else:
-                            st.error("Authentication failed.")
-                    except Exception:
-                        st.error("Login error.")
-
-        with reg_tab:
-            with st.form("reg_form"):
-                n_email = st.text_input("Email")
-                n_pass = st.text_input("Password")
-                if st.form_submit_button("Create"):
-                    try:
-                        supabase.auth.sign_up(
-                            {"email": n_email, "password": n_pass}
-                        )
-                        st.info("Account created.")
-                    except Exception as e:
-                        st.error(str(e))
+st.set_page_config(page_title="SkillSense AI", layout="wide")
 
 # ---------------- MAIN APP ----------------
+if not st.session_state.logged_in:
+    st.title("SkillSense AI")
+    st.markdown("Professional Resume Analysis Platform")
+    
+    tab1, tab2, tab3 = st.tabs(["Login", "Create Account", "Admin Access"])
+    
+    # ---------------- TAB 1: CLEAN LOGIN - NO CREDENTIALS SHOWN ----------------
+    with tab1:
+        st.markdown("Standard User Login")
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            if st.form_submit_button("LOGIN", type="primary"):
+                all_users = get_all_users()
+                if email in all_users and all_users[email]["password"] == password:
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = email
+                    st.session_state.user_role = all_users[email]["role"]
+                    st.success(f"Welcome {email}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials!")
+    
+    # ---------------- TAB 2: CREATE USER ACCOUNT ----------------
+    with tab2:
+        st.markdown("Create New User Account")
+        
+        if st.session_state.signup_step == "authcode":
+            st.info(f"Creating Administrator account for: {st.session_state.temp_email}")
+            st.warning("Administrative Authorization Code Required")
+            auth_code = st.text_input("Admin Auth Code", type="password")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Verify Auth Code", type="primary"):
+                    if auth_code == ADMIN_AUTH_CODE:
+                        st.session_state.custom_users[st.session_state.temp_email] = {
+                            "password": st.session_state.temp_password, "role": "admin"
+                        }
+                        st.session_state.signup_step = None
+                        st.success("Administrator account created successfully!")
+                    else:
+                        st.error("Invalid authorization code!")
+            
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state.signup_step = None
+                    st.session_state.temp_email = None
+                    st.session_state.temp_password = None
+                    st.rerun()
+        
+        else:
+            with st.form("create_user"):
+                email = st.text_input("New Email")
+                password = st.text_input("New Password", type="password")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    user_create = st.form_submit_button("Create USER Account", type="secondary")
+                with col2:
+                    admin_create = st.form_submit_button("Create ADMIN Account", type="primary")
+                
+                if user_create or admin_create:
+                    if email and password:
+                        if email in get_all_users():
+                            st.error("Email already exists!")
+                        else:
+                            st.session_state.temp_email = email
+                            st.session_state.temp_password = password
+                            
+                            if admin_create:
+                                st.session_state.signup_step = "authcode"
+                                st.info("Administrative authorization required!")
+                            else:
+                                st.session_state.custom_users[email] = {
+                                    "password": password, "role": "user"
+                                }
+                                st.success("User account created!")
+                    else:
+                        st.error("Fill all fields!")
+    
+    # ---------------- TAB 3: ADMIN LOGIN ----------------
+    with tab3:
+        st.markdown("Administrator Login")
+        with st.form("admin_login"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            if st.form_submit_button("ADMIN LOGIN", type="primary"):
+                all_users = get_all_users()
+                if email in all_users and all_users[email]["password"] == password and all_users[email]["role"] == "admin":
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = email
+                    st.session_state.user_role = all_users[email]["role"]
+                    st.success(f"Welcome Admin {email}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid admin credentials!")
 
 else:
-    st.sidebar.markdown(
-        f"### SkillSense AI\n**Role: {st.session_state.user_role.upper()}**"
-    )
-
-    nav = ["Framework Generator"]
-    if st.session_state.user_role == "Admin":
-        nav.append("Assessment History")
-
-    page = st.sidebar.radio("Navigation", nav)
-
+    # ---------------- DASHBOARD ----------------
+    st.sidebar.markdown("SkillSense AI")
+    st.sidebar.markdown(f"User: {st.session_state.current_user}")
+    st.sidebar.markdown(f"Role: {st.session_state.user_role.upper()}")
+    
     if st.sidebar.button("Logout"):
-        st.session_state.auth_status = False
+        st.session_state.logged_in = False
+        st.session_state.results = None
         st.rerun()
-
-    # ---------- FRAMEWORK ----------
-
-    if page == "Framework Generator":
-        st.header("Evaluation Framework")
-
-        c1, c2 = st.columns([1.5, 1])
-        with c1:
-            jd = st.text_area("Input Job Description", height=260)
-
-        with c2:
-            cand = st.text_input("Candidate Name")
+    
+    # Navigation
+    if st.session_state.user_role == "admin":
+        page = st.sidebar.radio("Navigation", ["Resume Analyzer", "Assessment History", "Admin Panel"])
+    else:
+        page = st.sidebar.radio("Navigation", ["Resume Analyzer"])
+    
+    # ---------------- RESUME ANALYZER ----------------
+    if page == "Resume Analyzer":
+        st.title("SkillSense AI - Resume Analyzer")
+        
+        col1, col2 = st.columns([2,1])
+        with col1:
+            resume_text = st.text_area("Paste Resume", height=300)
+        with col2:
+            name = st.text_input("Candidate Name")
             level = st.select_slider("Level", ["Junior", "Mid", "Senior"])
-            tech = st.slider("Tech Weight (%)", 0, 100, 70)
-            soft = 100 - tech
-
-        if st.button("Process Assessment", use_container_width=True) and jd:
-            skills = extract_skills(jd)
-            role, summary_para = generate_summary(skills, level, tech)
-            questions = generate_questions(skills, level)
-
-            st.session_state.results = {
-                "cand": cand,
-                "skills": skills,
-                "role": role,
-                "summary": summary_para,
-                "questions": questions,
-                "tech": tech,
-                "soft": soft,
-            }
-
-            try:
-                supabase.table("assessments").insert(
-                    {
-                        "candidate_name": cand,
-                        "role": role,
-                        "tech_score": tech,
-                        "soft_score": soft,
-                        "created_at": datetime.now().isoformat(),
-                    }
-                ).execute()
-            except:
-                st.warning("DB save skipped (table missing).")
-
-        # ---------- RESULTS ----------
-
-        if st.session_state.results:
-            res = st.session_state.results
-
-            st.divider()
-            r1, r2 = st.columns([1, 1])
-
-            with r1:
-                st.subheader("Live Result Summary")
-                st.markdown(
-                    f"""
-                    <div style='background-color:#0f172a;padding:18px;border-radius:12px;color:white;'>
-                    <h4>Candidate:</h4> {res['cand'] or 'N/A'}
-                    <br><h4>Role:</h4> {res['role']}
-                    <br><p>{res['summary']}</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            with r2:
-                fig_pie = go.Figure(
-                    data=[
-                        go.Pie(
-                            labels=["Technical", "Soft Skills"],
-                            values=[res["tech"], res["soft"]],
-                            hole=0.45,
-                        )
-                    ]
-                )
-                fig_pie.update_layout(height=380)
-                st.plotly_chart(fig_pie, use_container_width=True)
-
-                metrics_data = {
-                    "Domain Fit": 85,
-                    "Tech Score": res["tech"],
-                    "Culture Fit": 80,
+            
+            if st.button("ANALYZE RESUME", type="primary"):
+                skills = extract_resume_skills(resume_text)
+                decision, status, score = generate_hiring_recommendation(skills, level)
+                
+                st.session_state.results = {
+                    "candidate": name or "Candidate",
+                    "skills": skills, "level": level,
+                    "hire_decision": decision, "status": status, "score": score,
+                    "questions": generate_interview_questions(skills, level)
                 }
-
-                fig_metrics = go.Figure(
-                    go.Bar(
-                        x=list(metrics_data.values()),
-                        y=list(metrics_data.keys()),
-                        orientation="h",
-                        text=[f"{v}%" for v in metrics_data.values()],
-                        textposition="auto",
-                    )
-                )
-
-                fig_metrics.update_layout(height=200, xaxis=dict(range=[0, 100]))
-                st.plotly_chart(fig_metrics, use_container_width=True)
-
-            # ✅ -------- TARGETED QUESTIONS UI (ADDED) --------
-
-            st.markdown("### 🎯 Targeted Interview Questions")
-
-            for i, q in enumerate(res["questions"], 1):
-                st.info(f"{i}. {q}")
-
-            # ---------- PDF ----------
-
-            pdf_buffer = io.BytesIO()
-            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-            styles = getSampleStyleSheet()
-
-            elements = [
-                Paragraph(
-                    f"SkillSense AI Assessment — {res['cand']}", styles["Title"]
-                ),
-                Spacer(1, 14),
-                Paragraph("<b>Summary</b>", styles["Heading2"]),
-                Paragraph(res["summary"], styles["Normal"]),
-                Spacer(1, 14),
-                Paragraph("<b>Targeted Interview Questions</b>", styles["Heading2"]),
-            ]
-
-            for i, q in enumerate(res["questions"], 1):
-                elements.append(Paragraph(f"{i}. {q}", styles["Normal"]))
-
-            doc.build(elements)
-
-            st.download_button(
-                "📥 Download PDF Report",
-                pdf_buffer.getvalue(),
-                file_name="Report.pdf",
-                use_container_width=True,
-            )
-
-    # ---------- HISTORY ----------
-
-    elif page == "Assessment History":
-        st.header("Real-Time Assessment History")
-
+                
+                if st.session_state.user_role == "admin":
+                    save_assessment(st.session_state.results)
+        
+        if st.session_state.results:
+            r = st.session_state.results
+            
+            if "HIRE" in r['hire_decision']:
+                st.markdown(f"""
+                <div style='background:linear-gradient(45deg,#4CAF50,#45a049);
+                padding:30px;border-radius:15px;color:white;text-align:center'>
+                <h1>HIRE RECOMMENDED</h1><h2>{r['score']}%</h2></div>""", unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='background:linear-gradient(45deg,#f44336,#d32f2f);
+                padding:30px;border-radius:15px;color:white;text-align:center'>
+                <h1>NO HIRE</h1><h2>{r['score']}%</h2></div>""", unsafe_allow_html=True)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1: st.metric("Skills", len(r["skills"]))
+            with col2: st.metric("Level", r["level"])
+            with col3: st.metric("Score", f"{r['score']}%")
+            
+            st.subheader("Skills Found")
+            for skill in r["skills"]:
+                st.success(skill)
+            
+            if st.session_state.user_role == "admin":
+                st.subheader("Interview Questions")
+                for i, q in enumerate(r["questions"], 1):
+                    st.info(f"Q{i}: {q}")
+                
+                pdf_data = generate_hiring_pdf(r)
+                st.download_button("PDF Report", pdf_data.getvalue(), 
+                    f"SkillSense_{r['candidate']}.pdf", "application/pdf")
+    
+    # ---------------- OTHER PAGES ----------------
+    elif page == "Assessment History" and st.session_state.user_role == "admin":
+        st.title("Assessment History")
         try:
-            db_res = (
-                supabase.table("assessments")
-                .select("*")
-                .order("created_at", desc=True)
-                .execute()
-            )
-
-            if db_res.data:
-                df = pd.DataFrame(db_res.data)
+            data = supabase.table("assessments").select("*").order("created_at", desc=True).execute()
+            if data.data:
+                df = pd.DataFrame(data.data)
+                df['skills'] = df['skills'].apply(lambda x: json.loads(x) if x else [])
                 st.dataframe(df, use_container_width=True)
             else:
-                st.warning("No records found.")
-
+                st.info("No data yet")
         except:
-            st.error("Table 'assessments' not found in Supabase.")
+            st.info("Table needed")
+    
+    elif page == "Admin Panel" and st.session_state.user_role == "admin":
+        st.title("Admin Panel")
+        st.success("Admin Access Granted!")
+        
+        st.subheader("Created Accounts")
+        all_users = get_all_users()
+        user_df = pd.DataFrame([
+            {"Email": email, "Role": info["role"]} 
+            for email, info in all_users.items()
+        ])
+        st.dataframe(user_df)
+
+st.markdown("---")
+st.markdown("SkillSense AI © 2026 | Enterprise Authentication System", unsafe_allow_html=True)
