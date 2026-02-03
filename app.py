@@ -1,39 +1,56 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client
+import pickle
+import os
 import io
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
-import json
+from reportlab.lib.units import inch
 from datetime import datetime
-import re
+import json
 
-# ---------------- SUPABASE CONFIG ----------------
-SUPABASE_URL = "https://cgzvvhlrdffiyswgnmpp.supabase.co"
-SUPABASE_KEY = "sb_publishable_GhOIaGz64kXAeqLpl2c4wA_x8zmE_Mr"
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# ---------------- FILE BASED PERSISTENT STORAGE ----------------
+USERS_FILE = "skillsense_users.pkl"
+HISTORY_FILE = "skillsense_history.pkl"
 
-# ---------------- PROFESSIONAL ADMIN AUTH CODE ----------------
+# Load/Save functions
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'rb') as f:
+            return pickle.load(f)
+    return {
+        "user@gmail.com": {"password": "user123", "role": "user"},
+        "hr@company.com": {"password": "hr456", "role": "user"}
+    }
+
+def save_users(users):
+    with open(USERS_FILE, 'wb') as f:
+        pickle.dump(users, f)
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, 'rb') as f:
+            return pickle.load(f)
+    return []
+
+def save_history(history):
+    with open(HISTORY_FILE, 'wb') as f:
+        pickle.dump(history, f)
+
+# Load data
+users_db = load_users()
+history_db = load_history()
+
 ADMIN_AUTH_CODE = "SSAI-ADMIN-2026-X7K9"
-
-# ---------------- DEFAULT USERS ----------------
-DEFAULT_USERS = {
-    "user@gmail.com": {"password": "user123", "role": "user"},
-    "hr@company.com": {"password": "hr456", "role": "user"}
-}
-
-# Dynamic user storage
-if 'custom_users' not in st.session_state:
-    st.session_state.custom_users = {}
 
 SKILL_SENSE_DB = {
     "python": "Python", "java": "Java", "react": "React", "sql": "SQL", 
-    "aws": "AWS", "docker": "Docker", "angular": "Angular", "node": "Node.js"
+    "aws": "AWS", "docker": "Docker", "angular": "Angular", "node": "Node.js",
+    "javascript": "JavaScript", "mysql": "MySQL", "git": "Git"
 }
 
-# ---------------- FUNCTIONS ----------------
 def extract_resume_skills(resume_text):
     if not resume_text: return []
     text = resume_text.lower()
@@ -51,168 +68,217 @@ def generate_hiring_recommendation(skills, level):
     return "NO HIRE - Needs more skills", "Skill Gap", score
 
 def generate_interview_questions(skills, level):
-    return [f"Tell me about your {skill} experience?" for skill in skills[:6]]
-
-def save_assessment(results):
-    try:
-        data = {
-            "candidate": results['candidate'],
-            "skills": json.dumps(results['skills']),
-            "level": results['level'],
-            "hire_decision": results['hire_decision'],
-            "score": results['score'],
-            "status": results['status'],
-            "created_at": datetime.now().isoformat()
-        }
-        supabase.table("assessments").insert(data).execute()
-    except: pass
+    questions = []
+    for skill in skills[:5]:
+        questions.extend([
+            f"Can you describe your hands-on experience with {skill}?",
+            f"What was the most challenging project you worked on using {skill}?"
+        ])
+    return questions[:8]
 
 def generate_hiring_pdf(results):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
-    story = [
-        Paragraph("SkillSense AI - Analysis Report", styles['Title']),
-        Paragraph(f"Candidate: {results['candidate']}", styles['Heading1']),
-        Paragraph(f"Decision: {results['hire_decision']}", styles['Heading2'])
+    story = []
+    
+    # HEADER
+    story.append(Paragraph("SkillSense AI - Resume Analysis Report", styles['Title']))
+    story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y %I:%M %p')}", styles['Normal']))
+    story.append(Spacer(1, 20))
+    
+    # CANDIDATE INFO TABLE
+    candidate_data = [["Candidate Name:", results['candidate']], 
+                     ["Position Level:", results['level']],
+                     ["Analysis Date:", datetime.now().strftime('%Y-%m-%d')]]
+    
+    candidate_table = Table(candidate_data, colWidths=[2*inch, 3.5*inch])
+    candidate_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.lightblue),
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 0), (-1, -1), 12)
+    ]))
+    story.extend([candidate_table, Spacer(1, 20)])
+    
+    # MAIN DECISION TABLE
+    decision_data = [
+        ["Metric", "Status", "Score"],
+        ["Hiring Decision", results['hire_decision'], f"{results['score']}%"],
+        ["Skill Match", results['status'], f"{len(results['skills'])} Skills"],
+        ["Recommendation", "IMMEDIATE ACTION", "PRIORITY"]
     ]
+    
+    decision_table = Table(decision_data, colWidths=[1.8*inch, 2.2*inch, 1.8*inch])
+    decision_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkgreen),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.lightgreen if "HIRE" in results['hire_decision'] else colors.lightcoral),
+        ('GRID', (0, 0), (-1, -1), 2, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('FONTNAME', (1, 2), (1, 2), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (1, 2), (1, 2), colors.darkred)
+    ]))
+    
+    story.extend([Paragraph("HIRING DECISION SUMMARY", styles['Heading1']), 
+                 Spacer(1, 12), decision_table, Spacer(1, 20)])
+    
+    # SKILLS GRID
+    story.append(Paragraph("DETECTED TECHNICAL SKILLS", styles['Heading2']))
+    if results['skills']:
+        skills_data = []
+        for i in range(0, len(results['skills']), 2):
+            row = [results['skills'][i]]
+            if i+1 < len(results['skills']):
+                row.append(results['skills'][i+1])
+            skills_data.append(row)
+        
+        skills_table = Table(skills_data, colWidths=[3*inch, 3*inch], repeatRows=1)
+        skills_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.ivory),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.darkgreen),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
+        ]))
+        story.append(skills_table)
+    story.append(Spacer(1, 20))
+    
+    # ANALYSIS
+    story.append(Paragraph("DETAILED ANALYSIS", styles['Heading2']))
+    analysis_para = Paragraph(f"""
+    <b>Score Breakdown:</b> {results['score']}% match based on {len(results['skills'])} detected skills<br/>
+    <b>Threshold Met:</b> {'YES' if results['score'] >= 70 else 'NO'}<br/>
+    <b>Position Fit:</b> {results['level']} level - {results['status']}<br/><br/>
+    <b>Recommendation:</b> {results['hire_decision']}
+    """, styles['Normal'])
+    story.append(analysis_para)
+    
+    # INTERVIEW QUESTIONS (Admin only)
+    if st.session_state.get('user_role') == "admin" and 'questions' in results:
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("INTERVIEW QUESTIONS", styles['Heading2']))
+        for i, question in enumerate(results['questions'][:6], 1):
+            story.append(Paragraph(f"{i}. {question}", styles['Normal']))
+            story.append(Spacer(1, 8))
+    
+    # FOOTER
+    story.append(Spacer(1, 20))
+    footer_data = [["Generated by:", "SkillSense AI Enterprise"], 
+                  ["Report ID:", f"SSAI-{datetime.now().strftime('%Y%m%d%H%M')}"]]
+    footer_table = Table(footer_data, colWidths=[2*inch, 3.5*inch])
+    footer_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    story.append(footer_table)
+    
     doc.build(story)
     buffer.seek(0)
     return buffer
 
-def get_all_users():
-    return {**DEFAULT_USERS, **st.session_state.custom_users}
-
 # ---------------- SESSION STATE ----------------
-if 'logged_in' not in st.session_state: st.session_state.logged_in = False
-if 'current_user' not in st.session_state: st.session_state.current_user = None
-if 'user_role' not in st.session_state: st.session_state.user_role = None
-if 'results' not in st.session_state: st.session_state.results = None
-if 'signup_step' not in st.session_state: st.session_state.signup_step = None
-if 'temp_email' not in st.session_state: st.session_state.temp_email = None
-if 'temp_password' not in st.session_state: st.session_state.temp_password = None
+if 'logged_in' not in st.session_state: 
+    st.session_state.logged_in = False
+if 'current_user' not in st.session_state: 
+    st.session_state.current_user = None
+if 'user_role' not in st.session_state: 
+    st.session_state.user_role = None
+if 'results' not in st.session_state: 
+    st.session_state.results = None
 
 st.set_page_config(page_title="SkillSense AI", layout="wide")
 
 # ---------------- MAIN APP ----------------
 if not st.session_state.logged_in:
     st.title("SkillSense AI")
-    st.markdown("Professional Resume Analysis Platform")
+    st.markdown("### Professional Resume Analysis Platform")
     
-    tab1, tab2, tab3 = st.tabs(["Login", "Create Account", "Admin Access"])
+    tab1, tab2 = st.tabs(["Login", "Create Account"])  # NO ADMIN TAB
     
-    # ---------------- TAB 1: CLEAN LOGIN - NO CREDENTIALS SHOWN ----------------
+    # TAB 1: LOGIN
     with tab1:
-        st.markdown("Standard User Login")
+        st.markdown("**Login with your saved account**")
         with st.form("login_form"):
             email = st.text_input("Email")
             password = st.text_input("Password", type="password")
+            
             if st.form_submit_button("LOGIN", type="primary"):
-                all_users = get_all_users()
-                if email in all_users and all_users[email]["password"] == password:
+                if email in users_db and users_db[email]["password"] == password:
                     st.session_state.logged_in = True
                     st.session_state.current_user = email
-                    st.session_state.user_role = all_users[email]["role"]
-                    st.success(f"Welcome {email}!")
+                    st.session_state.user_role = users_db[email]["role"]
+                    st.success(f"Welcome back {email}!")
                     st.rerun()
                 else:
                     st.error("Invalid credentials!")
+                    st.info("**Default:** user@gmail.com / user123")
     
-    # ---------------- TAB 2: CREATE USER ACCOUNT ----------------
+    # TAB 2: CREATE ACCOUNT
     with tab2:
-        st.markdown("Create New User Account")
-        
-        if st.session_state.signup_step == "authcode":
-            st.info(f"Creating Administrator account for: {st.session_state.temp_email}")
-            st.warning("Administrative Authorization Code Required")
-            auth_code = st.text_input("Admin Auth Code", type="password")
+        st.markdown("**Create New Account (Saved Forever)**")
+        with st.form("create_account"):
+            email = st.text_input("New Email")
+            password = st.text_input("New Password", type="password")
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Verify Auth Code", type="primary"):
-                    if auth_code == ADMIN_AUTH_CODE:
-                        st.session_state.custom_users[st.session_state.temp_email] = {
-                            "password": st.session_state.temp_password, "role": "admin"
-                        }
-                        st.session_state.signup_step = None
-                        st.success("Administrator account created successfully!")
-                    else:
-                        st.error("Invalid authorization code!")
-            
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.signup_step = None
-                    st.session_state.temp_email = None
-                    st.session_state.temp_password = None
-                    st.rerun()
-        
-        else:
-            with st.form("create_user"):
-                email = st.text_input("New Email")
-                password = st.text_input("New Password", type="password")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    user_create = st.form_submit_button("Create USER Account", type="secondary")
-                with col2:
-                    admin_create = st.form_submit_button("Create ADMIN Account", type="primary")
-                
-                if user_create or admin_create:
+                if st.form_submit_button("Create USER Account", type="secondary"):
                     if email and password:
-                        if email in get_all_users():
-                            st.error("Email already exists!")
+                        if email not in users_db:
+                            users_db[email] = {"password": password, "role": "user"}
+                            save_users(users_db)
+                            st.success(f"✅ User account SAVED: {email}")
+                            st.info("Login anytime with same details!")
                         else:
-                            st.session_state.temp_email = email
-                            st.session_state.temp_password = password
-                            
-                            if admin_create:
-                                st.session_state.signup_step = "authcode"
-                                st.info("Administrative authorization required!")
-                            else:
-                                st.session_state.custom_users[email] = {
-                                    "password": password, "role": "user"
-                                }
-                                st.success("User account created!")
+                            st.error("Email already exists!")
                     else:
                         st.error("Fill all fields!")
-    
-    # ---------------- TAB 3: ADMIN LOGIN ----------------
-    with tab3:
-        st.markdown("Administrator Login")
-        with st.form("admin_login"):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            if st.form_submit_button("ADMIN LOGIN", type="primary"):
-                all_users = get_all_users()
-                if email in all_users and all_users[email]["password"] == password and all_users[email]["role"] == "admin":
-                    st.session_state.logged_in = True
-                    st.session_state.current_user = email
-                    st.session_state.user_role = all_users[email]["role"]
-                    st.success(f"Welcome Admin {email}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid admin credentials!")
+            
+            with col2:
+                admin_code = st.text_input("Admin Auth Code", type="password", 
+                                         placeholder="")
+                if st.form_submit_button("Create ADMIN Account", type="primary"):
+                    if email and password:
+                        if email not in users_db:
+                            if admin_code == ADMIN_AUTH_CODE:
+                                users_db[email] = {"password": password, "role": "admin"}
+                                save_users(users_db)
+                                st.success(f"✅ Admin account SAVED: {email}")
+                            else:
+                                st.error("❌ Wrong admin code!")
+                        else:
+                            st.error("Email already exists!")
+                    else:
+                        st.error("Fill all fields!")
 
 else:
-    # ---------------- DASHBOARD ----------------
-    st.sidebar.markdown("SkillSense AI")
-    st.sidebar.markdown(f"User: {st.session_state.current_user}")
-    st.sidebar.markdown(f"Role: {st.session_state.user_role.upper()}")
+    # DASHBOARD
+    st.sidebar.markdown("**SkillSense AI**")
+    st.sidebar.markdown(f"**User:** {st.session_state.current_user}")
+    st.sidebar.markdown(f"**Role:** {st.session_state.user_role.upper()}")
     
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
+        st.session_state.current_user = None
+        st.session_state.user_role = None
         st.session_state.results = None
         st.rerun()
     
     # Navigation
     if st.session_state.user_role == "admin":
-        page = st.sidebar.radio("Navigation", ["Resume Analyzer", "Assessment History", "Admin Panel"])
+        page = st.sidebar.radio("Dashboard", ["Resume Analyzer", "History", "Admin"])
     else:
-        page = st.sidebar.radio("Navigation", ["Resume Analyzer"])
+        page = st.sidebar.radio("Dashboard", ["Resume Analyzer"])
     
-    # ---------------- RESUME ANALYZER ----------------
     if page == "Resume Analyzer":
-        st.title("SkillSense AI - Resume Analyzer")
+        st.title("Resume Analyzer")
         
         col1, col2 = st.columns([2,1])
         with col1:
@@ -225,15 +291,21 @@ else:
                 skills = extract_resume_skills(resume_text)
                 decision, status, score = generate_hiring_recommendation(skills, level)
                 
-                st.session_state.results = {
+                result = {
                     "candidate": name or "Candidate",
-                    "skills": skills, "level": level,
-                    "hire_decision": decision, "status": status, "score": score,
-                    "questions": generate_interview_questions(skills, level)
+                    "skills": skills,
+                    "level": level,
+                    "hire_decision": decision,
+                    "status": status,
+                    "score": score,
+                    "questions": generate_interview_questions(skills, level),
+                    "timestamp": datetime.now().isoformat()
                 }
                 
-                if st.session_state.user_role == "admin":
-                    save_assessment(st.session_state.results)
+                st.session_state.results = result
+                history_db.append(result)
+                save_history(history_db)
+                st.success("Analysis saved!")
         
         if st.session_state.results:
             r = st.session_state.results
@@ -260,38 +332,46 @@ else:
             
             if st.session_state.user_role == "admin":
                 st.subheader("Interview Questions")
-                for i, q in enumerate(r["questions"], 1):
+                for i, q in enumerate(r["questions"][:5], 1):
                     st.info(f"Q{i}: {q}")
                 
                 pdf_data = generate_hiring_pdf(r)
-                st.download_button("PDF Report", pdf_data.getvalue(), 
-                    f"SkillSense_{r['candidate']}.pdf", "application/pdf")
+                st.download_button(
+                    "Download PDF Report",
+                    pdf_data.getvalue(),
+                    f"SkillSense_{r['candidate'].replace(' ', '_')}.pdf",
+                    "application/pdf"
+                )
     
-    # ---------------- OTHER PAGES ----------------
-    elif page == "Assessment History" and st.session_state.user_role == "admin":
-        st.title("Assessment History")
-        try:
-            data = supabase.table("assessments").select("*").order("created_at", desc=True).execute()
-            if data.data:
-                df = pd.DataFrame(data.data)
-                df['skills'] = df['skills'].apply(lambda x: json.loads(x) if x else [])
-                st.dataframe(df, use_container_width=True)
-            else:
-                st.info("No data yet")
-        except:
-            st.info("Table needed")
+    elif page == "History" and st.session_state.user_role == "admin":
+        st.title("Analysis History")
+        if history_db:
+            df = pd.DataFrame(history_db)
+            st.dataframe(df[['candidate', 'hire_decision', 'score', 'timestamp']], use_container_width=True)
+        else:
+            st.info("No analysis history yet")
     
-    elif page == "Admin Panel" and st.session_state.user_role == "admin":
+    elif page == "Admin" and st.session_state.user_role == "admin":
         st.title("Admin Panel")
-        st.success("Admin Access Granted!")
+        col1, col2 = st.columns(2)
         
-        st.subheader("Created Accounts")
-        all_users = get_all_users()
-        user_df = pd.DataFrame([
-            {"Email": email, "Role": info["role"]} 
-            for email, info in all_users.items()
-        ])
-        st.dataframe(user_df)
+        with col1:
+            st.subheader("All User Accounts")
+            user_df = pd.DataFrame([
+                {"Email": email, "Role": info["role"]} 
+                for email, info in users_db.items()
+            ])
+            st.dataframe(user_df)
+            st.info(f"**Files:** skillsense_users.pkl, skillsense_history.pkl")
+        
+        with col2:
+            if st.button("Delete All Data"):
+                if os.path.exists(USERS_FILE):
+                    os.remove(USERS_FILE)
+                if os.path.exists(HISTORY_FILE):
+                    os.remove(HISTORY_FILE)
+                st.success("All data deleted!")
+                st.rerun()
 
 st.markdown("---")
-st.markdown("SkillSense AI © 2026 | Enterprise Authentication System", unsafe_allow_html=True)
+st.markdown("**SkillSense AI © 2026 | Professional Resume Analysis**")
