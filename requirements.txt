@@ -1,10 +1,7 @@
 streamlit
 pandas
-supabase
-plotly
 reportlab
-
-streamlit
-supabase
-fpdf
-openai
+sentence-transformers
+torch
+transformers
+numpy
