@@ -263,7 +263,7 @@ if not st.session_state.logged_in:
     
     # TAB 2: CREATE ACCOUNT
     with tab2:
-        st.markdown("Create New Account")
+        st.markdown("Create New Account (Saved Forever)")
         with st.form("create_account"):
             email = st.text_input("New Email")
             password = st.text_input("New Password", type="password")
@@ -283,7 +283,7 @@ if not st.session_state.logged_in:
                         st.error("Fill all fields!")
             
             with col2:
-                admin_code = st.text_input("Admin Auth Code", type="password", placeholder="Enter your Passkey")
+                admin_code = st.text_input("Admin Auth Code", type="password", placeholder="")
                 if st.form_submit_button("Create ADMIN Account", type="primary"):
                     if email and password:
                         if email not in users_db:
